@@ -173,7 +173,7 @@ jobs:
           ref: ${{ env.CHECKOUT_REF }}
 
       - name: Download release artifacts
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
