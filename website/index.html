@@ -142,22 +142,6 @@
 
           <article class="install-card glass-card hover-lift">
             <div class="card-head flex j-between a-center">
-              <h3>Signed APT repository</h3>
-              <span class="badge primary-badge">Debian</span>
-            </div>
-            <p class="card-desc" id="apt-copy">
-              When repository signing is configured, the landing page publishes a Debian
-              repository beside the release hub.
-            </p>
-            <div class="code-wrap">
-              <button class="copy-button" type="button" data-copy-target="apt-command">Copy</button>
-              <pre class="code-block" id="apt-command">APT repository metadata will appear here after publication.</pre>
-            </div>
-            <p class="card-note mono-note" id="apt-fingerprint-row"></p>
-          </article>
-
-          <article class="install-card glass-card hover-lift">
-            <div class="card-head flex j-between a-center">
               <h3>Direct `.deb` package</h3>
               <span class="badge secondary-badge">Binary package</span>
             </div>
@@ -173,7 +157,28 @@
             </p>
           </article>
 
-          <article class="install-card install-card-wide glass-card hover-lift">
+          <article class="install-card install-card-wide install-card-wide-apt glass-card hover-lift">
+            <div class="card-head flex j-between a-center">
+              <h3>Signed APT repository</h3>
+              <span class="badge primary-badge">Debian</span>
+            </div>
+            <p class="card-desc" id="apt-copy">
+              When repository signing is configured, the landing page publishes a Debian
+              repository beside the release hub.
+            </p>
+            <div class="pill-list pill-list-muted">
+              <span>apt-secure metadata</span>
+              <span>Binary and ASCII key export</span>
+              <span>Stable suite publishing</span>
+            </div>
+            <div class="code-wrap">
+              <button class="copy-button" type="button" data-copy-target="apt-command">Copy</button>
+              <pre class="code-block" id="apt-command">APT repository metadata will appear here after publication.</pre>
+            </div>
+            <p class="card-note mono-note" id="apt-fingerprint-row"></p>
+          </article>
+
+          <article class="install-card install-card-wide install-card-wide-ghcr glass-card hover-lift">
             <div class="card-head flex j-between a-center">
               <h3>GHCR runtime</h3>
               <span class="badge secondary-badge">Container</span>
@@ -181,6 +186,10 @@
             <p class="card-desc">
               Pull the published multi-arch image when you want the release path to stay container-native.
             </p>
+            <div class="pill-list pill-list-muted">
+              <span>Multi-arch container image</span>
+              <span>Pinned or moving tags</span>
+            </div>
             <div class="code-wrap">
               <button class="copy-button" type="button" data-copy-target="container-command">Copy</button>
               <pre class="code-block" id="container-command">docker run --rm ghcr.io/soakes/s3ctl:latest --help</pre>

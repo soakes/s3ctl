@@ -449,19 +449,13 @@ section {
 .grid-layout {
   display: grid;
   gap: 2rem;
-  align-items: start;
+  align-items: stretch;
   grid-template-columns: 1fr;
 }
 
-@media (min-width: 769px) {
+@media (min-width: 900px) {
   .grid-layout {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (min-width: 1200px) {
-  .grid-layout {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
@@ -469,19 +463,19 @@ section {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+  height: 100%;
 }
 
 .install-card-featured {
   border-color: var(--border-glow);
 }
 
-@media (min-width: 1200px) {
+@media (min-width: 900px) {
   .install-card-wide {
     grid-column: 1 / -1;
     display: grid;
-    grid-template-columns: minmax(0, 1.15fr) minmax(340px, 0.85fr);
-    gap: 1.25rem 2rem;
-    align-items: center;
+    gap: 1.5rem 2rem;
+    align-items: start;
   }
 
   .install-card-wide .card-head {
@@ -491,19 +485,41 @@ section {
 
   .install-card-wide .card-desc {
     grid-column: 1;
-    max-width: 38rem;
+    max-width: 42rem;
+    margin-bottom: 0;
   }
 
   .install-card-wide .code-wrap {
     grid-column: 2;
     grid-row: 1 / span 3;
-    align-self: center;
+    align-self: start;
   }
 
   .install-card-wide .card-note {
     grid-column: 1;
-    max-width: 38rem;
+    max-width: 42rem;
   }
+
+  .install-card-wide .pill-list {
+    grid-column: 1;
+  }
+
+  .install-card-wide-apt {
+    grid-template-columns: minmax(0, 0.9fr) minmax(420px, 1.1fr);
+  }
+
+  .install-card-wide-ghcr {
+    grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+    align-items: center;
+  }
+
+  .install-card-wide-ghcr .code-wrap {
+    align-self: center;
+  }
+}
+
+.install-card:not(.install-card-wide) .code-wrap {
+  margin-top: auto;
 }
 
 .card-head h3 {
@@ -552,6 +568,12 @@ section {
   color: #bff9ff;
   font-size: 0.8rem;
   font-weight: 600;
+}
+
+.pill-list-muted span {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: var(--text-muted);
 }
 
 .code-wrap {
