@@ -186,20 +186,106 @@ jobs:
       - name: Classify release tag
         id: release
         run: |
-          if [[ "${RELEASE_REF}" == *-rc.* ]]; then
-            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          ref_name="${RELEASE_REF}"
+
+          if [[ "${ref_name}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]]; then
+            prerelease=true
+            stable_tag="${ref_name%-rc.*}"
+            previous_tag="$(
+              git tag --list "${stable_tag}-rc.*" --sort=-v:refname \
+                | grep -vx "${ref_name}" \
+                | head -n1 || true
+            )"
+            if [ -z "${previous_tag}" ]; then
+              previous_tag="$(
+                git for-each-ref --sort=-v:refname --format='%(refname:short)' refs/tags/v* \
+                  | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+                  | head -n1 || true
+              )"
+            fi
+          elif [[ "${ref_name}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            prerelease=false
+            previous_tag="$(
+              git for-each-ref --sort=-v:refname --format='%(refname:short)' refs/tags/v* \
+                | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+                | grep -vx "${ref_name}" \
+                | head -n1 || true
+            )"
           else
-            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "Unsupported release tag format: ${ref_name}" >&2
+            exit 1
           fi
 
+          {
+            echo "prerelease=${prerelease}"
+            echo "previous_tag=${previous_tag}"
+            echo "release_sha=$(git rev-parse HEAD)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Write release notes
+        run: |
+          mkdir -p release
+          bash scripts/generate-release-notes.sh \
+            "${{ steps.release.outputs.previous_tag }}" \
+            "${{ steps.release.outputs.release_sha }}" \
+            release/release-notes.md
+
       - name: Publish release
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: ${{ env.RELEASE_REF }}
-          target_commitish: ${{ github.event.repository.default_branch }}
-          prerelease: ${{ steps.release.outputs.prerelease }}
-          generate_release_notes: true
-          files: |
-            dist/*.tar.gz
-            dist/*.deb
-            dist/s3ctl_SHA256SUMS
+        env:
+          DEFAULT_GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          export GH_TOKEN="${DEFAULT_GH_TOKEN}"
+          release_ref="${RELEASE_REF}"
+
+          orphan_draft_ids="$(
+            gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+              --jq ".[] | select(.draft == true and .tag_name == \"${release_ref}\" and (.html_url | contains(\"/releases/tag/untagged-\"))) | .id" || true
+          )"
+          if [ -n "${orphan_draft_ids}" ]; then
+            while IFS= read -r release_id; do
+              [ -n "${release_id}" ] || continue
+              gh api -X DELETE "repos/${GITHUB_REPOSITORY}/releases/${release_id}"
+            done <<< "${orphan_draft_ids}"
+          fi
+
+          mapfile -t assets < <(
+            find dist -maxdepth 1 -type f \
+              \( -name '*.tar.gz' -o -name '*.deb' -o -name 's3ctl_SHA256SUMS' \) \
+              | sort
+          )
+          if [ "${#assets[@]}" -eq 0 ]; then
+            echo "No release assets were staged for upload" >&2
+            exit 1
+          fi
+
+          if gh release view "${release_ref}" >/dev/null 2>&1; then
+            gh release upload "${release_ref}" --clobber "${assets[@]}"
+
+            edit_args=(
+              --draft=false
+              --title "${release_ref}"
+              --notes-file release/release-notes.md
+            )
+            if [ "${{ steps.release.outputs.prerelease }}" = "true" ]; then
+              edit_args+=(--prerelease)
+            else
+              edit_args+=(--latest)
+            fi
+
+            gh release edit "${release_ref}" "${edit_args[@]}"
+            exit 0
+          fi
+
+          create_args=(
+            --title "${release_ref}"
+            --notes-file release/release-notes.md
+          )
+          if [ "${{ steps.release.outputs.prerelease }}" = "true" ]; then
+            create_args+=(--prerelease)
+          else
+            create_args+=(--latest)
+          fi
+
+          gh release create "${release_ref}" "${assets[@]}" "${create_args[@]}"

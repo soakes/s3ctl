@@ -82,6 +82,10 @@ jobs:
       - name: Validate packaging and website assets
         run: |
           bash -n scripts/*.sh
+          bash scripts/generate-release-notes.sh '' HEAD /tmp/s3ctl-release-notes.md
+          grep -F '## Release Overview' /tmp/s3ctl-release-notes.md
+          grep -F '## Published Artifacts' /tmp/s3ctl-release-notes.md
+
           bash scripts/install.sh --help > /tmp/s3ctl-install-help.txt
           grep -F -- '--version <tag|latest>' /tmp/s3ctl-install-help.txt
           test -f website/dist/index.html
