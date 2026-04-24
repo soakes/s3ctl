@@ -25,13 +25,10 @@ const requiredDOMIDs = [
   "hero-release-link",
   "hero-checksum-link",
   "release-version",
+  "release-commit",
   "release-date",
-  "release-channels",
-  "release-summary",
-  "signal-archives",
-  "signal-debs",
-  "signal-checksums",
-  "signal-apt",
+  "release-fingerprint",
+  "release-highlights",
   "install-script-command",
   "install-script-note",
   "apt-command",
@@ -47,7 +44,8 @@ const requiredDOMIDs = [
   "asset-key-link",
   "asset-key-asc-link",
   "asset-list",
-  "footer-note",
+  "footer-commit",
+  "footer-version",
 ];
 
 const errors = [];

@@ -9,6 +9,7 @@ const defaultMetadata = {
   release_url: "https://github.com/soakes/s3ctl/releases",
   container_url: "https://ghcr.io/soakes/s3ctl",
   install_script_url: `${defaultSiteURL}install.sh`,
+  release_commit: "",
   latest_release: null,
   apt_repository: {
     available: false,
@@ -75,6 +76,7 @@ function normalizeMetadata(metadata = {}) {
     ...metadata,
     site_url: `${metadata.site_url || defaultMetadata.site_url}`.replace(/\/?$/, "/"),
     install_script_url: metadata.install_script_url || defaultMetadata.install_script_url,
+    release_commit: metadata.release_commit || "",
     latest_release: metadata.latest_release || null,
     apt_repository: {
       ...defaultMetadata.apt_repository,
@@ -99,6 +101,36 @@ function setHref(id, value) {
   if (element && value) {
     element.href = value;
   }
+}
+
+function normalizeWhitespace(value) {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function stripMarkdown(value) {
+  return normalizeWhitespace(
+    value
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+      .replace(/`([^`]+)`/g, "$1"),
+  );
+}
+
+function shortCommit(value) {
+  if (!value) {
+    return "---";
+  }
+
+  return value.length > 10 ? value.slice(0, 7) : value;
+}
+
+function releaseCommit(metadata) {
+  if (metadata.release_commit) {
+    return metadata.release_commit;
+  }
+
+  const body = metadata.latest_release?.body || "";
+  const match = body.match(/\/commit\/([0-9a-f]{7,40})/i);
+  return match ? match[1] : "";
 }
 
 function setLinkState(id, { href, text, enabled }) {
@@ -134,6 +166,74 @@ function assetSummary(assets = []) {
     debCount: debs.length,
     checksumAsset,
   };
+}
+
+function changeHighlights(body) {
+  if (!body) {
+    return [];
+  }
+
+  const lines = body.split("\n");
+  const highlights = [];
+  let inIncludedChanges = false;
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+
+    if (line === "## Included Changes") {
+      inIncludedChanges = true;
+      continue;
+    }
+
+    if (inIncludedChanges && line.startsWith("## ")) {
+      break;
+    }
+
+    if (!inIncludedChanges || !line.startsWith("- ")) {
+      continue;
+    }
+
+    const cleaned = stripMarkdown(line.slice(2)).replace(/\s+\([^)]*\)\s*$/, "");
+    if (!cleaned || cleaned.startsWith("Automatically merged")) {
+      continue;
+    }
+
+    highlights.push(cleaned);
+    if (highlights.length === 3) {
+      break;
+    }
+  }
+
+  return highlights;
+}
+
+function releaseHighlights(metadata) {
+  const release = metadata.latest_release;
+  const assets = release?.assets || [];
+  const summary = assetSummary(assets);
+  const checksumAsset = chooseChecksumAsset(assets);
+  const noteHighlights = changeHighlights(release?.body || "");
+  const highlights = [];
+
+  if (release?.tag_name) {
+    highlights.push(
+      `Release ${release.tag_name} ships ${summary.archiveCount} archives, ${summary.debCount} Debian packages, and ${checksumAsset ? "attached checksums" : "pending checksums"}.`,
+    );
+  }
+
+  if (metadata.apt_repository.available && metadata.apt_repository.fingerprint) {
+    highlights.push(`Signed APT metadata is live with archive fingerprint ${metadata.apt_repository.fingerprint}.`);
+  } else if (metadata.apt_repository.available) {
+    highlights.push("Signed APT metadata is published for stable Debian installs.");
+  }
+
+  if (noteHighlights.length > 0) {
+    highlights.push(...noteHighlights);
+  } else if (release?.tag_name) {
+    highlights.push(`Latest release notes are published on the ${release.tag_name} GitHub release page.`);
+  }
+
+  return highlights.slice(0, 4);
 }
 
 function sortedAssets(assets = []) {
@@ -207,16 +307,6 @@ function renderAssetList(release) {
       return row;
     }),
   );
-}
-
-function renderSignals(metadata) {
-  const assets = metadata.latest_release?.assets || [];
-  const summary = assetSummary(assets);
-
-  setText("signal-archives", summary.archiveCount > 0 ? `${summary.archiveCount} published` : "Pending");
-  setText("signal-debs", summary.debCount > 0 ? `${summary.debCount} published` : "Pending");
-  setText("signal-checksums", summary.checksumAsset ? "Attached" : "Pending");
-  setText("signal-apt", metadata.apt_repository.available ? "Signed and ready" : "Waiting on publish");
 }
 
 function renderCommands(metadata) {
@@ -347,31 +437,29 @@ function renderLinks(metadata) {
 function renderMetadata(rawMetadata) {
   const metadata = normalizeMetadata(rawMetadata);
   const release = metadata.latest_release;
-  const assets = release?.assets || [];
-  const summary = assetSummary(assets);
+  const commit = shortCommit(releaseCommit(metadata));
+  const highlights = releaseHighlights(metadata);
 
   renderLinks(metadata);
 
   setText("release-version", release?.tag_name || "Awaiting release metadata");
+  setText("release-commit", commit);
   setText("release-date", formatDate(release?.published_at));
-  setText(
-    "release-channels",
-    metadata.apt_repository.available ? "GitHub Releases, GHCR, signed APT" : "GitHub Releases, GHCR",
-  );
-  setText(
-    "release-summary",
-    release
-      ? `Latest release ${release.tag_name} is published with ${summary.archiveCount || 0} archives, ${summary.debCount || 0} Debian packages, and ${summary.checksumAsset ? "attached checksums" : "pending checksum publication"}.`
-      : "Publish a stable release and redeploy Pages to surface the full release payload here.",
-  );
-  setText(
-    "footer-note",
-    release
-      ? `Latest published release: ${release.tag_name} on ${formatDate(release.published_at)}`
-      : "GitHub Pages metadata has not been published yet.",
-  );
+  setText("release-fingerprint", metadata.apt_repository.fingerprint || "Awaiting signed APT metadata");
+  setText("footer-version", release?.tag_name || "---");
+  setText("footer-commit", commit);
 
-  renderSignals(metadata);
+  const highlightsList = document.getElementById("release-highlights");
+  if (highlightsList) {
+    highlightsList.replaceChildren(
+      ...(highlights.length > 0 ? highlights : ["Release metadata has not been published yet."]).map((highlight) => {
+        const item = document.createElement("li");
+        item.textContent = highlight;
+        return item;
+      }),
+    );
+  }
+
   renderCommands(metadata);
   renderAssetList(release);
 }

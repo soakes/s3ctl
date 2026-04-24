@@ -103,6 +103,14 @@ body {
   font-size: 0.875rem;
 }
 
+.text-xs {
+  font-size: 0.75rem;
+}
+
+.font-mono {
+  font-family: var(--font-mono);
+}
+
 .relative {
   position: relative;
 }
@@ -359,33 +367,19 @@ section {
   margin: 1rem 0;
 }
 
-.signal-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1rem;
-}
-
-.signal-card {
+.bullet-list {
+  list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
-  padding: 1rem;
-  border-radius: 14px;
-  background: rgba(3, 7, 18, 0.5);
-  border: 1px solid var(--border-dim);
-}
-
-.signal-label {
-  font-size: 0.75rem;
-  text-transform: uppercase;
+  gap: 0.65rem;
+  font-size: 0.9rem;
   color: var(--text-muted);
-  letter-spacing: 0.05em;
-  font-weight: 700;
 }
 
-.signal-value {
-  font-family: var(--font-head);
-  font-size: 1rem;
+.bullet-list li::before {
+  content: "→";
+  color: var(--accent-primary);
+  margin-right: 0.5rem;
 }
 
 .highlights {

@@ -67,39 +67,22 @@
               <span class="meta-value text-gradient-alt" id="release-version">Awaiting release metadata</span>
             </div>
             <div class="meta-item">
-              <span class="meta-label">Published UTC</span>
-              <span class="meta-value text-sm" id="release-date">Not published yet</span>
+              <span class="meta-label">Release commit</span>
+              <span class="meta-value font-mono" id="release-commit">---</span>
             </div>
           </div>
           <div class="meta-block">
-            <span class="meta-label">Channels</span>
-            <span class="meta-value text-sm" id="release-channels">GitHub Releases, GHCR</span>
+            <span class="meta-label">Published UTC</span>
+            <span class="meta-value text-sm" id="release-date">Not published yet</span>
           </div>
           <div class="meta-block">
-            <span class="meta-label">Release summary</span>
-            <span class="meta-value text-sm text-muted" id="release-summary">
-              Publish a stable release and redeploy Pages to surface the full release payload here.
-            </span>
+            <span class="meta-label">Archive key fingerprint</span>
+            <span class="meta-value font-mono text-xs text-muted" id="release-fingerprint">---</span>
           </div>
           <hr class="dim-divider" />
-          <div class="signal-grid">
-            <div class="signal-card">
-              <span class="signal-label">Archives</span>
-              <strong class="signal-value" id="signal-archives">Pending</strong>
-            </div>
-            <div class="signal-card">
-              <span class="signal-label">Debian packages</span>
-              <strong class="signal-value" id="signal-debs">Pending</strong>
-            </div>
-            <div class="signal-card">
-              <span class="signal-label">Checksums</span>
-              <strong class="signal-value" id="signal-checksums">Pending</strong>
-            </div>
-            <div class="signal-card">
-              <span class="signal-label">APT signing</span>
-              <strong class="signal-value" id="signal-apt">Pending</strong>
-            </div>
-          </div>
+          <ul class="bullet-list" id="release-highlights">
+            <li>Loading release highlights...</li>
+          </ul>
         </aside>
       </section>
 
@@ -250,7 +233,7 @@
     <footer class="footer wrapper text-center relative z-10 fade-in">
       <hr class="dim-divider" />
       <p><strong>s3ctl</strong> turns bucket provisioning into a releaseable, installable product.</p>
-      <p class="text-sm text-muted" id="footer-note">GitHub Pages metadata has not been published yet.</p>
+      <p class="text-sm text-muted">Published from commit <span id="footer-commit" class="font-mono">---</span> for release <span id="footer-version">---</span></p>
     </footer>
   </body>
 </html>
