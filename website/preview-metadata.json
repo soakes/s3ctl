@@ -5,57 +5,57 @@
   "release_url": "https://github.com/soakes/s3ctl/releases",
   "container_url": "https://ghcr.io/soakes/s3ctl",
   "install_script_url": "https://soakes.github.io/s3ctl/install.sh",
-  "release_commit": "41383525a88e491e8317d20afe9522a6d302a65d",
+  "release_commit": "3723c72437deaedba052a056a9644ece62ee1bf7",
   "latest_release": {
-    "tag_name": "v0.1.1",
-    "html_url": "https://github.com/soakes/s3ctl/releases/tag/v0.1.1",
-    "published_at": "2026-04-24T19:35:36Z",
-    "body": "## Release Overview\n\nStable release for `s3ctl`.\n\n- Published tag: [`v0.1.1`](https://github.com/soakes/s3ctl/releases/tag/v0.1.1)\n- Full diff: [`v0.1.0...v0.1.1`](https://github.com/soakes/s3ctl/compare/v0.1.0...v0.1.1)\n\n## Included Changes\n\n### Fixes\n\n- Refresh pages site after release assets ([`92b18c7`](https://github.com/soakes/s3ctl/commit/92b18c7f7b0c785c0897ae7dfb49f6615d582dbc))\n\n- Publish curated release notes ([`f1d8669`](https://github.com/soakes/s3ctl/commit/f1d86693e30a0eb90661dee679b581e38b0d26d3))\n\n- Align favicon with release site branding ([`4138352`](https://github.com/soakes/s3ctl/commit/41383525a88e491e8317d20afe9522a6d302a65d))\n\n### CI and Automation\n\n- Bump actions/download-artifact from 6 to 8 ([`477ac5c`](https://github.com/soakes/s3ctl/commit/477ac5c5c4428ff24dee268088e2f16dec9ea311))\n  - Automatically merged after Build and Validate completed successfully for this Dependabot pull request.\n\n- Bump softprops/action-gh-release from 2 to 3 ([`f560ae3`](https://github.com/soakes/s3ctl/commit/f560ae3cd3d848f819d9f046a8448c367393f70d))\n  - Automatically merged after Build and Validate completed successfully for this Dependabot pull request.\n\n## Published Artifacts\n\n- Release binaries for `linux/amd64`, `linux/arm64`, `linux/arm/v7`, `darwin/amd64`, and `darwin/arm64`\n- Debian packages for `amd64`, `arm64`, and `armhf`\n- SHA256 checksums attached to the release\n- Container images published to `ghcr.io/soakes/s3ctl`\n- The GitHub Pages release hub is refreshed with install commands, release assets, and APT repository metadata\n",
+    "tag_name": "v0.1.2",
+    "html_url": "https://github.com/soakes/s3ctl/releases/tag/v0.1.2",
+    "published_at": "2026-04-24T21:10:58Z",
+    "body": "## Release Overview\n\nStable release for `s3ctl`.\n\n- Published tag: [`v0.1.2`](https://github.com/soakes/s3ctl/releases/tag/v0.1.2)\n- Full diff: [`v0.1.1...v0.1.2`](https://github.com/soakes/s3ctl/compare/v0.1.1...v0.1.2)\n\n## Included Changes\n\n### Fixes\n\n- Refresh live release metadata rail ([`3723c72`](https://github.com/soakes/s3ctl/commit/3723c72437deaedba052a056a9644ece62ee1bf7))\n\n## Published Artifacts\n\n- Release binaries for `linux/amd64`, `linux/arm64`, `linux/arm/v7`, `darwin/amd64`, and `darwin/arm64`\n- Debian packages for `amd64`, `arm64`, and `armhf`\n- SHA256 checksums attached to the release\n- Container images published to `ghcr.io/soakes/s3ctl`\n- The GitHub Pages release hub is refreshed with install commands, release assets, and APT repository metadata\n",
     "assets": [
       {
         "name": "s3ctl-linux-amd64.tar.gz",
-        "browser_download_url": "https://github.com/soakes/s3ctl/releases/download/v0.1.1/s3ctl-linux-amd64.tar.gz",
-        "size": 4821340
+        "browser_download_url": "https://github.com/soakes/s3ctl/releases/download/v0.1.2/s3ctl-linux-amd64.tar.gz",
+        "size": 4020060
       },
       {
         "name": "s3ctl-linux-arm64.tar.gz",
-        "browser_download_url": "https://github.com/soakes/s3ctl/releases/download/v0.1.1/s3ctl-linux-arm64.tar.gz",
-        "size": 4562112
+        "browser_download_url": "https://github.com/soakes/s3ctl/releases/download/v0.1.2/s3ctl-linux-arm64.tar.gz",
+        "size": 3592110
       },
       {
         "name": "s3ctl-linux-armv7.tar.gz",
-        "browser_download_url": "https://github.com/soakes/s3ctl/releases/download/v0.1.1/s3ctl-linux-armv7.tar.gz",
-        "size": 4419874
+        "browser_download_url": "https://github.com/soakes/s3ctl/releases/download/v0.1.2/s3ctl-linux-armv7.tar.gz",
+        "size": 3817370
       },
       {
         "name": "s3ctl-darwin-amd64.tar.gz",
-        "browser_download_url": "https://github.com/soakes/s3ctl/releases/download/v0.1.1/s3ctl-darwin-amd64.tar.gz",
-        "size": 4892105
+        "browser_download_url": "https://github.com/soakes/s3ctl/releases/download/v0.1.2/s3ctl-darwin-amd64.tar.gz",
+        "size": 4071800
       },
       {
         "name": "s3ctl-darwin-arm64.tar.gz",
-        "browser_download_url": "https://github.com/soakes/s3ctl/releases/download/v0.1.1/s3ctl-darwin-arm64.tar.gz",
-        "size": 4680240
+        "browser_download_url": "https://github.com/soakes/s3ctl/releases/download/v0.1.2/s3ctl-darwin-arm64.tar.gz",
+        "size": 3728221
       },
       {
-        "name": "s3ctl_0.1.1_amd64.deb",
-        "browser_download_url": "https://github.com/soakes/s3ctl/releases/download/v0.1.1/s3ctl_0.1.1_amd64.deb",
-        "size": 5120042
+        "name": "s3ctl_0.1.2_amd64.deb",
+        "browser_download_url": "https://github.com/soakes/s3ctl/releases/download/v0.1.2/s3ctl_0.1.2_amd64.deb",
+        "size": 3265622
       },
       {
-        "name": "s3ctl_0.1.1_arm64.deb",
-        "browser_download_url": "https://github.com/soakes/s3ctl/releases/download/v0.1.1/s3ctl_0.1.1_arm64.deb",
-        "size": 4932280
+        "name": "s3ctl_0.1.2_arm64.deb",
+        "browser_download_url": "https://github.com/soakes/s3ctl/releases/download/v0.1.2/s3ctl_0.1.2_arm64.deb",
+        "size": 2891602
       },
       {
-        "name": "s3ctl_0.1.1_armhf.deb",
-        "browser_download_url": "https://github.com/soakes/s3ctl/releases/download/v0.1.1/s3ctl_0.1.1_armhf.deb",
-        "size": 4789012
+        "name": "s3ctl_0.1.2_armhf.deb",
+        "browser_download_url": "https://github.com/soakes/s3ctl/releases/download/v0.1.2/s3ctl_0.1.2_armhf.deb",
+        "size": 3019924
       },
       {
         "name": "s3ctl_SHA256SUMS",
-        "browser_download_url": "https://github.com/soakes/s3ctl/releases/download/v0.1.1/s3ctl_SHA256SUMS",
-        "size": 612
+        "browser_download_url": "https://github.com/soakes/s3ctl/releases/download/v0.1.2/s3ctl_SHA256SUMS",
+        "size": 721
       }
     ]
   },
@@ -65,6 +65,6 @@
     "suite": "stable",
     "component": "main",
     "key_url": "https://soakes.github.io/s3ctl/apt/s3ctl-archive-keyring.gpg",
-    "fingerprint": "9A1F 8D47 4F6A 6A1E 5C6D  1F32 0A4F 7C2D 8E91 B5A1"
+    "fingerprint": "7E6A 3D77 36C6 E573 16AC 2920 418B 37C1 CF46 53F1"
   }
 }
