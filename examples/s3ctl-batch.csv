@@ -1,0 +1,3 @@
+bucket,create_scoped_credentials,credential_policy_template,enable_versioning
+app-data,true,bucket-readwrite,true
+logs-archive,true,bucket-readonly,false

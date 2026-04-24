@@ -1,0 +1,140 @@
+name: Build and Validate
+
+on:
+  pull_request:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version-file: .golangci-lint-version
+
+  quality:
+    name: Quality
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+
+      - name: Check gofmt formatting
+        run: make fmt-check
+
+      - name: Validate GitHub Pages website
+        run: |
+          npm ci --prefix website
+          make website-check
+          make website-build
+
+      - name: Run vet
+        run: make vet
+
+      - name: Run tests
+        run: make test
+
+      - name: Build binary
+        run: make build
+
+      - name: Validate packaging and website assets
+        run: |
+          bash -n scripts/*.sh
+          bash scripts/install.sh --help > /tmp/s3ctl-install-help.txt
+          grep -F -- '--version <tag|latest>' /tmp/s3ctl-install-help.txt
+          test -f website/dist/index.html
+
+          make build-cross GOOS=linux GOARCH=amd64 OUTPUT=dist/s3ctl-linux-amd64
+          bash scripts/build-deb-package.sh dist/s3ctl-linux-amd64 dist v0.0.0 amd64
+          test -f dist/s3ctl_0.0.0_amd64.deb
+
+      - name: Smoke test built binary
+        run: |
+          ./dist/s3ctl --version | tee /tmp/s3ctl-version.txt
+          grep -F 'Version:' /tmp/s3ctl-version.txt
+
+          ./dist/s3ctl --version --output json > /tmp/s3ctl-version.json
+          grep -F '"binary": "s3ctl"' /tmp/s3ctl-version.json
+          grep -F '"version":' /tmp/s3ctl-version.json
+
+          ./dist/s3ctl | tee /tmp/s3ctl-no-args.txt
+          grep -F 'Usage:' /tmp/s3ctl-no-args.txt
+          grep -F 'Examples:' /tmp/s3ctl-no-args.txt
+
+          ./dist/s3ctl --help | tee /tmp/s3ctl-help.txt
+          grep -F 'Primary environment variables:' /tmp/s3ctl-help.txt
+          grep -F 'Built-in scoped credential policy templates:' /tmp/s3ctl-help.txt
+
+          ./dist/s3ctl --config examples/s3ctl.json --dry-run --output json > /tmp/s3ctl-config.json
+          grep -F '"resource_count": 2' /tmp/s3ctl-config.json
+          grep -F '"bucket_name": "app-data"' /tmp/s3ctl-config.json
+          grep -F '"created": true' /tmp/s3ctl-config.json
+
+          ./dist/s3ctl --bucket app-data --create-scoped-credentials --dry-run > /tmp/s3ctl-single.txt
+          grep -F 'Bucket create planned: yes' /tmp/s3ctl-single.txt
+          grep -F 'IAM user: s3ctl-app-data' /tmp/s3ctl-single.txt
+
+          ./dist/s3ctl --batch-file examples/s3ctl-batch.csv --create-scoped-credentials --dry-run --output json > /tmp/s3ctl-batch.json
+          grep -F '"bucket_name": "logs-archive"' /tmp/s3ctl-batch.json
+          grep -F '"policy_template": "bucket-readonly"' /tmp/s3ctl-batch.json
+
+          S3CTL_BUCKET_NAME=env-bucket \
+          S3CTL_ENDPOINT_URL=https://objects.example.com \
+          S3CTL_CREATE_SCOPED_CREDENTIALS=true \
+          ./dist/s3ctl --dry-run > /tmp/s3ctl-env.txt
+          grep -F 'Bucket: env-bucket' /tmp/s3ctl-env.txt
+          grep -F 'IAM user: s3ctl-env-bucket' /tmp/s3ctl-env.txt
+
+          mkdir -p /tmp/s3ctl-config-home/s3ctl
+          cat > /tmp/s3ctl-config-home/s3ctl/config.json <<'EOF'
+          {
+            "endpoint": "https://config.example.com",
+            "create_scoped_credentials": true
+          }
+          EOF
+          XDG_CONFIG_HOME=/tmp/s3ctl-config-home ./dist/s3ctl --bucket auto-config --dry-run > /tmp/s3ctl-default-config.txt
+          grep -F 'Bucket: auto-config' /tmp/s3ctl-default-config.txt
+          grep -F 'Endpoint: https://config.example.com' /tmp/s3ctl-default-config.txt
+          grep -F 'IAM user: s3ctl-auto-config' /tmp/s3ctl-default-config.txt

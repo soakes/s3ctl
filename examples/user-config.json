@@ -1,0 +1,9 @@
+{
+  "endpoint": "https://objects.example.com",
+  "region": "us-east-1",
+  "profile": "production",
+  "create_scoped_credentials": true,
+  "credential_policy_template": "bucket-readwrite",
+  "iam_user_prefix": "s3ctl-",
+  "iam_path": "/s3ctl/"
+}

@@ -1,0 +1,175 @@
+name: Dependabot Auto Merge
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 2 * * 0"
+  workflow_run:
+    workflows:
+      - Build and Validate
+    types:
+      - completed
+
+concurrency:
+  group: dependabot-auto-merge-${{ github.event.workflow_run.id || github.run_id }}
+  cancel-in-progress: false
+
+permissions:
+  checks: read
+  contents: write
+  pull-requests: write
+  statuses: read
+
+jobs:
+  merge:
+    name: Review and Merge Dependabot Pull Requests
+    if: |
+      (
+        github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'pull_request'
+      ) ||
+      (
+        github.event_name != 'workflow_run' &&
+        github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+      )
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Identify candidate pull requests
+        id: candidates
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          WORKFLOW_RUN_PULL_REQUESTS: ${{ toJson(github.event.workflow_run.pull_requests) }}
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            prs="$(printf '%s\n' "${WORKFLOW_RUN_PULL_REQUESTS:-[]}" | jq -r '.[].number')"
+          else
+            prs="$(
+              gh pr list --state open --json number,author,baseRefName \
+                --jq '.[] | select((.author.login == "dependabot[bot]" or .author.login == "dependabot" or .author.login == "app/dependabot") and .baseRefName == "'"${DEFAULT_BRANCH}"'") | .number'
+            )"
+          fi
+
+          prs="$(printf '%s\n' "${prs}" | sed '/^$/d' | sort -u)"
+          count="$(printf '%s\n' "${prs}" | sed '/^$/d' | wc -l | tr -d ' ')"
+
+          {
+            echo "count=${count}"
+            echo "prs<<EOF"
+            printf '%s\n' "${prs}"
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Review and merge eligible pull requests
+        if: steps.candidates.outputs.count != '0'
+        env:
+          DEFAULT_GH_TOKEN: ${{ github.token }}
+          DEPENDABOT_AUTOMERGE_TOKEN: ${{ secrets.DEPENDABOT_AUTOMERGE_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          CANDIDATE_PRS: ${{ steps.candidates.outputs.prs }}
+          TRIGGERING_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+
+          export GH_TOKEN="${DEPENDABOT_AUTOMERGE_TOKEN:-${DEFAULT_GH_TOKEN}}"
+
+          normalize_detail() {
+            printf '%s' "$1" | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g; s/^ //; s/ $//'
+          }
+
+          latest_validation_run() {
+            local head_sha="$1"
+
+            gh run list \
+              --workflow "Build and Validate" \
+              --limit 100 \
+              --json headSha,event,conclusion,url \
+              --jq '.[] | select(.event == "pull_request" and .headSha == "'"${head_sha}"'" and .conclusion == "success") | .url' \
+              | head -n1
+          }
+
+          {
+            printf '## Dependabot Auto Merge\n\n'
+            printf '| Pull Request | Result | Details |\n'
+            printf '| --- | --- | --- |\n'
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+          while IFS= read -r pr_number; do
+            [ -n "${pr_number}" ] || continue
+
+            pr_json="$(gh pr view "${pr_number}" --json author,state,isDraft,baseRefName,headRefOid,reviewDecision,url,title)"
+            author="$(jq -r '.author.login // ""' <<<"${pr_json}")"
+            state="$(jq -r '.state' <<<"${pr_json}")"
+            draft="$(jq -r '.isDraft' <<<"${pr_json}")"
+            base_ref="$(jq -r '.baseRefName' <<<"${pr_json}")"
+            head_sha="$(jq -r '.headRefOid // ""' <<<"${pr_json}")"
+            review_decision="$(jq -r '.reviewDecision // ""' <<<"${pr_json}")"
+            url="$(jq -r '.url' <<<"${pr_json}")"
+            title="$(jq -r '.title' <<<"${pr_json}")"
+
+            if [ "${author}" != "dependabot[bot]" ] && [ "${author}" != "dependabot" ] && [ "${author}" != "app/dependabot" ]; then
+              printf '| [#%s](%s) | skipped | Not authored by Dependabot. |\n' "${pr_number}" "${url}" >> "${GITHUB_STEP_SUMMARY}"
+              continue
+            fi
+
+            if [ "${state}" != "OPEN" ] || [ "${draft}" != "false" ] || [ "${base_ref}" != "${DEFAULT_BRANCH}" ]; then
+              printf '| [#%s](%s) | skipped | Not an open, ready pull request against `%s`. |\n' "${pr_number}" "${url}" "${DEFAULT_BRANCH}" >> "${GITHUB_STEP_SUMMARY}"
+              continue
+            fi
+
+            if [ -z "${head_sha}" ]; then
+              printf '| [#%s](%s) | skipped | Could not resolve the current PR head SHA. |\n' "${pr_number}" "${url}" >> "${GITHUB_STEP_SUMMARY}"
+              continue
+            fi
+
+            validation_detail=''
+            if [ "${{ github.event_name }}" = "workflow_run" ]; then
+              if [ "${TRIGGERING_HEAD_SHA:-}" != "${head_sha}" ]; then
+                printf '| [#%s](%s) | skipped | The successful workflow run was for an older PR head revision. |\n' "${pr_number}" "${url}" >> "${GITHUB_STEP_SUMMARY}"
+                continue
+              fi
+              validation_detail='Validated by the triggering Build and Validate run for the current PR head revision.'
+            else
+              validation_url="$(latest_validation_run "${head_sha}")"
+              if [ -z "${validation_url}" ]; then
+                printf '| [#%s](%s) | skipped | No successful Build and Validate run was found for the current PR head revision. |\n' "${pr_number}" "${url}" >> "${GITHUB_STEP_SUMMARY}"
+                continue
+              fi
+              validation_detail="Validated by successful Build and Validate run ${validation_url}."
+            fi
+
+            if [ "${review_decision}" != "APPROVED" ]; then
+              gh pr review "${pr_number}" --approve --body "Approved automatically after successful validation." >/dev/null 2>&1 || true
+            fi
+
+            merge_body="$(
+              printf '%s\n\n%s\n' \
+                'Automatically merged after Build and Validate completed successfully for this Dependabot pull request.' \
+                "Original pull request: ${url}"
+            )"
+
+            if merge_output="$(gh pr merge "${pr_number}" \
+              --squash \
+              --delete-branch \
+              --match-head-commit "${head_sha}" \
+              --subject "${title}" \
+              --body "${merge_body}" 2>&1)"; then
+              printf '| [#%s](%s) | merged | %s |\n' "${pr_number}" "${url}" "${validation_detail}" >> "${GITHUB_STEP_SUMMARY}"
+              continue
+            fi
+
+            if printf '%s' "${merge_output}" | grep -Fq 'without workflows permission'; then
+              printf '| [#%s](%s) | skipped | Workflow-file updates need an optional `DEPENDABOT_AUTOMERGE_TOKEN` with workflow scope before they can merge automatically. |\n' "${pr_number}" "${url}" >> "${GITHUB_STEP_SUMMARY}"
+              continue
+            fi
+
+            printf '| [#%s](%s) | skipped | %s |\n' "${pr_number}" "${url}" "$(normalize_detail "${merge_output}")" >> "${GITHUB_STEP_SUMMARY}"
+          done <<EOF
+          ${CANDIDATE_PRS}
+          EOF

@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="s3ctl release hub with installer commands, Debian packages, multi-arch binaries, and GitHub Pages distribution metadata."
+    />
+    <meta name="theme-color" content="#030712" />
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@500;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <title>s3ctl | Release Hub</title>
+    <script type="module" src="./main.js"></script>
+  </head>
+  <body>
+    <div class="glow-bg glow-bg-primary"></div>
+    <div class="glow-bg glow-bg-secondary"></div>
+
+    <header class="masthead wrapper flex j-between a-center fade-in">
+      <a class="brand" href="#" id="site-home-link">
+        <div class="brand-mark">S3</div>
+        <div class="brand-copy">
+          <strong>s3ctl</strong>
+          <small>S3 provisioning and credential automation</small>
+        </div>
+      </a>
+
+      <nav class="masthead-links hide-mobile">
+        <a href="https://github.com/soakes/s3ctl" class="nav-link" id="nav-github-link">GitHub</a>
+        <a href="https://github.com/soakes/s3ctl/releases" class="nav-link" id="nav-releases-link">Releases</a>
+        <a href="https://ghcr.io/soakes/s3ctl" class="nav-link" id="nav-container-link">GHCR</a>
+        <a href="#" class="nav-link" id="nav-apt-link">APT</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero wrapper fade-in" style="animation-delay: 0.1s;">
+        <div class="hero-content">
+          <div class="hero-chip"><span>Release Distribution</span></div>
+          <h1 class="hero-title">
+            Ship bucket automation with<br />
+            <span class="text-gradient">a cleaner operator path</span>
+          </h1>
+          <p class="hero-lead">
+            Install `s3ctl` from a single shell command, a signed Debian repository,
+            direct `.deb` packages, GitHub Releases, or GHCR. The release hub keeps
+            the supported delivery paths obvious.
+          </p>
+          <div class="hero-actions">
+            <a href="#install" class="btn btn-primary">Install</a>
+            <a href="https://github.com/soakes/s3ctl/releases" class="btn btn-secondary" id="hero-release-link">Releases</a>
+            <a href="https://github.com/soakes/s3ctl/releases" class="btn btn-secondary" id="hero-checksum-link">Checksums</a>
+          </div>
+        </div>
+
+        <aside class="hero-rail glass-card stagger-in">
+          <h3 class="rail-title">Live Release Metadata</h3>
+          <div class="meta-grid">
+            <div class="meta-item">
+              <span class="meta-label">Latest stable</span>
+              <span class="meta-value text-gradient-alt" id="release-version">Awaiting release metadata</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Published UTC</span>
+              <span class="meta-value text-sm" id="release-date">Not published yet</span>
+            </div>
+          </div>
+          <div class="meta-block">
+            <span class="meta-label">Channels</span>
+            <span class="meta-value text-sm" id="release-channels">GitHub Releases, GHCR</span>
+          </div>
+          <div class="meta-block">
+            <span class="meta-label">Release summary</span>
+            <span class="meta-value text-sm text-muted" id="release-summary">
+              Publish a stable release and redeploy Pages to surface the full release payload here.
+            </span>
+          </div>
+          <hr class="dim-divider" />
+          <div class="signal-grid">
+            <div class="signal-card">
+              <span class="signal-label">Archives</span>
+              <strong class="signal-value" id="signal-archives">Pending</strong>
+            </div>
+            <div class="signal-card">
+              <span class="signal-label">Debian packages</span>
+              <strong class="signal-value" id="signal-debs">Pending</strong>
+            </div>
+            <div class="signal-card">
+              <span class="signal-label">Checksums</span>
+              <strong class="signal-value" id="signal-checksums">Pending</strong>
+            </div>
+            <div class="signal-card">
+              <span class="signal-label">APT signing</span>
+              <strong class="signal-value" id="signal-apt">Pending</strong>
+            </div>
+          </div>
+        </aside>
+      </section>
+
+      <section class="highlights wrapper stagger-in">
+        <div class="glass-card flex-row">
+          <div class="highlight-item">
+            <span class="h-label">Purpose</span>
+            <strong>Bucket provisioning</strong>
+            <p>Create buckets, attach policy defaults, and issue scoped credentials cleanly.</p>
+          </div>
+          <div class="highlight-item">
+            <span class="h-label">Distribution</span>
+            <strong>Shell, APT, GHCR</strong>
+            <p>One release workflow, several operator-ready installation paths.</p>
+          </div>
+          <div class="highlight-item">
+            <span class="h-label">Coverage</span>
+            <strong>Linux and macOS</strong>
+            <p>Multi-arch release archives and Debian packages for the normal deployment targets.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="install" class="install-section wrapper fade-in">
+        <div class="section-heading">
+          <p class="eyebrow">Deploy Seamlessly</p>
+          <h2>Pick your delivery path.</h2>
+          <p class="section-lead">
+            The high-confidence routes stay closest to hand: a direct installer, a signed
+            APT repository, a direct Debian package, and a pinned GHCR runtime path.
+          </p>
+        </div>
+
+        <div class="grid-layout">
+          <article class="install-card glass-card hover-lift install-card-featured">
+            <div class="card-head flex j-between a-center">
+              <h3>Direct installer</h3>
+              <span class="badge primary-badge">Recommended</span>
+            </div>
+            <p class="card-desc">
+              Download the right release archive for the current platform, verify checksums
+              when published, and install `s3ctl` into the target directory.
+            </p>
+            <div class="pill-list">
+              <span>Cross-platform archive selection</span>
+              <span>Checksum verification</span>
+              <span>Version and path overrides</span>
+            </div>
+            <div class="code-wrap">
+              <button class="copy-button" type="button" data-copy-target="install-script-command">Copy</button>
+              <pre class="code-block" id="install-script-command">curl -fsSL ./install.sh | sh</pre>
+            </div>
+            <p class="card-note" id="install-script-note">
+              The installer supports --version, --install-dir, and --binary-name for more controlled installs.
+            </p>
+          </article>
+
+          <article class="install-card glass-card hover-lift">
+            <div class="card-head flex j-between a-center">
+              <h3>Signed APT repository</h3>
+              <span class="badge primary-badge">Debian</span>
+            </div>
+            <p class="card-desc" id="apt-copy">
+              When repository signing is configured, the landing page publishes a Debian
+              repository beside the release hub.
+            </p>
+            <div class="code-wrap">
+              <button class="copy-button" type="button" data-copy-target="apt-command">Copy</button>
+              <pre class="code-block" id="apt-command">APT repository metadata will appear here after publication.</pre>
+            </div>
+            <p class="card-note mono-note" id="apt-fingerprint-row"></p>
+          </article>
+
+          <article class="install-card glass-card hover-lift">
+            <div class="card-head flex j-between a-center">
+              <h3>Direct `.deb` package</h3>
+              <span class="badge secondary-badge">Binary package</span>
+            </div>
+            <p class="card-desc">
+              Use a release package directly when you want a Debian install without wiring an APT source.
+            </p>
+            <div class="code-wrap">
+              <button class="copy-button" type="button" data-copy-target="deb-command">Copy</button>
+              <pre class="code-block" id="deb-command">Release package metadata will appear here after publication.</pre>
+            </div>
+            <p class="card-note" id="deb-note">
+              The release hub will prefer the amd64 package when one is published.
+            </p>
+          </article>
+
+          <article class="install-card glass-card hover-lift">
+            <div class="card-head flex j-between a-center">
+              <h3>GHCR runtime</h3>
+              <span class="badge secondary-badge">Container</span>
+            </div>
+            <p class="card-desc">
+              Pull the published multi-arch image when you want the release path to stay container-native.
+            </p>
+            <div class="code-wrap">
+              <button class="copy-button" type="button" data-copy-target="container-command">Copy</button>
+              <pre class="code-block" id="container-command">docker run --rm ghcr.io/soakes/s3ctl:latest --help</pre>
+            </div>
+            <p class="card-note" id="container-note">
+              Use the published image when you want the install path to stay container-native.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="assets-section wrapper fade-in">
+        <div class="section-heading">
+          <p class="eyebrow">Release Payload</p>
+          <h2>Latest release assets</h2>
+        </div>
+
+        <div class="asset-panel glass-card">
+          <div class="asset-summary">
+            <div>
+              <span class="meta-label">Release assets</span>
+            </div>
+            <span class="asset-count" id="asset-count">No published assets yet</span>
+          </div>
+          <div class="asset-links">
+            <a class="asset-link" id="asset-release-link" href="https://github.com/soakes/s3ctl/releases">Release page</a>
+            <a class="asset-link" id="asset-checksum-link" href="https://github.com/soakes/s3ctl/releases">Checksums</a>
+            <a class="asset-link" id="asset-key-link" href="./apt/s3ctl-archive-keyring.gpg">APT keyring</a>
+            <a class="asset-link" id="asset-key-asc-link" href="./apt/s3ctl-archive-keyring.asc">ASCII key</a>
+          </div>
+          <div class="asset-list" id="asset-list">
+            <div class="asset-empty">Publish a stable release to populate download links and package metadata.</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="cta wrapper fade-in">
+        <div class="glass-card cta-card text-center relative overflow-hidden">
+          <div class="cta-bg-glow"></div>
+          <h2 class="cta-title">Ready to automate bucket access?</h2>
+          <p class="cta-desc">
+            Use the release hub for installation, then drive bucket provisioning from flags,
+            environment variables, JSON config, or CSV batch input.
+          </p>
+          <a href="https://github.com/soakes/s3ctl#readme" class="btn btn-primary large-btn">Open Documentation</a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer wrapper text-center relative z-10 fade-in">
+      <hr class="dim-divider" />
+      <p><strong>s3ctl</strong> turns bucket provisioning into a releaseable, installable product.</p>
+      <p class="text-sm text-muted" id="footer-note">GitHub Pages metadata has not been published yet.</p>
+    </footer>
+  </body>
+</html>

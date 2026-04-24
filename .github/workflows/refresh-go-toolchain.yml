@@ -1,0 +1,63 @@
+name: Refresh Build Tooling Pins
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 4 * * *"
+
+concurrency:
+  group: refresh-build-tooling-pins
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  refresh:
+    name: Refresh Build Tooling Pins
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: stable
+          cache: false
+
+      - name: Refresh Go toolchain pins
+        run: make refresh-go-toolchain
+
+      - name: Refresh golangci-lint version pin
+        run: |
+          latest="$(curl -fsSL https://api.github.com/repos/golangci/golangci-lint/releases/latest | jq -r '.tag_name')"
+          printf '%s\n' "${latest}" > .golangci-lint-version
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@v8
+        with:
+          add-paths: |
+            Dockerfile
+            README.md
+            .golangci-lint-version
+            go.mod
+          branch: automation/refresh-go-toolchain
+          commit-message: "chore: refresh build tooling pins"
+          title: "chore: refresh build tooling pins"
+          body: |
+            Refreshes the preferred Go toolchain version in `go.mod`, aligns the
+            Docker build image pin, refreshes the pinned `golangci-lint`
+            release version, and updates the README badge to the latest stable
+            Go release published on `go.dev`.
+          delete-branch: true
+          labels: |
+            dependencies
+            go

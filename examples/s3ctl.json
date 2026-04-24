@@ -1,0 +1,9 @@
+{
+  "endpoint": "https://objects.example.com",
+  "region": "us-east-1",
+  "enable_versioning": true,
+  "create_scoped_credentials": true,
+  "credential_policy_template": "bucket-readwrite",
+  "bucket_policy_template": "deny-insecure-transport",
+  "batch_file": "./s3ctl-batch.csv"
+}

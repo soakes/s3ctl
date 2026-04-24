@@ -1,0 +1,211 @@
+name: Publish Pages Site
+
+on:
+  push:
+    branches:
+      - main
+  release:
+    types:
+      - published
+  workflow_dispatch:
+
+concurrency:
+  group: pages-site
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Pages Site
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v6
+        with:
+          enablement: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+
+      - name: Resolve latest release metadata
+        id: latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p .release-assets
+
+          if gh api "repos/${GITHUB_REPOSITORY}/releases/latest" > latest-release.json 2>/dev/null; then
+            release_tag="$(jq -r '.tag_name' latest-release.json)"
+            gh release download "${release_tag}" --pattern '*.deb' --dir .release-assets || true
+            {
+              echo "available=true"
+              echo "tag=${release_tag}"
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build signed APT repository
+        id: apt
+        env:
+          APT_GPG_PRIVATE_KEY: ${{ secrets.APT_GPG_PRIVATE_KEY }}
+          APT_GPG_KEY_ID: ${{ secrets.APT_GPG_KEY_ID }}
+          APT_GPG_PASSPHRASE: ${{ secrets.APT_GPG_PASSPHRASE }}
+        run: |
+          mkdir -p site/apt
+
+          if [ "${{ steps.latest.outputs.available }}" != "true" ]; then
+            {
+              echo "available=false"
+              echo "fingerprint="
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ -z "${APT_GPG_PRIVATE_KEY}" ]; then
+            {
+              echo "available=false"
+              echo "fingerprint="
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if ! compgen -G ".release-assets/*.deb" >/dev/null; then
+            {
+              echo "available=false"
+              echo "fingerprint="
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends apt-utils dpkg-dev gnupg xz-utils
+
+          bash scripts/build-apt-repository.sh site/apt .release-assets stable main
+
+          export GNUPGHOME="${RUNNER_TEMP}/gnupg"
+          mkdir -p "${GNUPGHOME}"
+          chmod 700 "${GNUPGHOME}"
+          printf '%s' "${APT_GPG_PRIVATE_KEY}" | gpg --batch --import
+
+          key_id="${APT_GPG_KEY_ID}"
+          if [ -z "${key_id}" ]; then
+            key_id="$(gpg --batch --list-secret-keys --with-colons | awk -F: '$1 == "fpr" { print $10; exit }')"
+          fi
+
+          fingerprint="$(gpg --batch --with-colons --fingerprint "${key_id}" | awk -F: '$1 == "fpr" { print $10; exit }')"
+          pretty_fingerprint="$(printf '%s' "${fingerprint}" | sed 's/.\{4\}/& /g; s/ $//')"
+
+          passphrase_args=()
+          if [ -n "${APT_GPG_PASSPHRASE}" ]; then
+            passphrase_args=(--pinentry-mode loopback --passphrase "${APT_GPG_PASSPHRASE}")
+          fi
+
+          gpg --batch --yes --export "${key_id}" > site/apt/s3ctl-archive-keyring.gpg
+          gpg --batch --yes --armor --export "${key_id}" > site/apt/s3ctl-archive-keyring.asc
+          printf '%s\n' "${pretty_fingerprint}" > site/apt/s3ctl-archive-keyring.fingerprint.txt
+
+          release_file="site/apt/dists/stable/Release"
+          gpg --batch --yes "${passphrase_args[@]}" \
+            --local-user "${key_id}" \
+            --armor --detach-sign \
+            --output "${release_file}.gpg" \
+            "${release_file}"
+          gpg --batch --yes "${passphrase_args[@]}" \
+            --local-user "${key_id}" \
+            --clearsign \
+            --output "site/apt/dists/stable/InRelease" \
+            "${release_file}"
+
+          {
+            echo "available=true"
+            echo "fingerprint=${pretty_fingerprint}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Assemble site payload
+        run: |
+          site_url="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
+          mkdir -p site
+          npm ci --prefix website
+          make website-check
+          make website-build
+          cp -a website/dist/. site/
+          cp scripts/install.sh site/install.sh
+          chmod 0755 site/install.sh
+          touch site/.nojekyll
+
+          if [ "${{ steps.latest.outputs.available }}" = "true" ]; then
+            latest_release_json="$(cat latest-release.json)"
+          else
+            latest_release_json='null'
+          fi
+
+          jq -n \
+            --arg site_url "${site_url}" \
+            --arg github_repository "${GITHUB_REPOSITORY}" \
+            --arg github_url "https://github.com/${GITHUB_REPOSITORY}" \
+            --arg release_url "https://github.com/${GITHUB_REPOSITORY}/releases" \
+            --arg container_url "https://ghcr.io/${GITHUB_REPOSITORY}" \
+            --arg install_script_url "${site_url}install.sh" \
+            --arg apt_url "${site_url}apt/" \
+            --arg apt_key_url "${site_url}apt/s3ctl-archive-keyring.gpg" \
+            --arg apt_fingerprint "${{ steps.apt.outputs.fingerprint }}" \
+            --argjson latest_release "${latest_release_json}" \
+            --arg apt_available "${{ steps.apt.outputs.available }}" \
+            '{
+              site_url: $site_url,
+              github_repository: $github_repository,
+              github_url: $github_url,
+              release_url: $release_url,
+              container_url: $container_url,
+              install_script_url: $install_script_url,
+              latest_release: $latest_release,
+              apt_repository: {
+                available: ($apt_available == "true"),
+                url: $apt_url,
+                suite: "stable",
+                component: "main",
+                key_url: $apt_key_url,
+                fingerprint: $apt_fingerprint
+              }
+            }' > site/website-metadata.json
+
+          test -f site/index.html
+          test -f site/website-metadata.json
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+  deploy:
+    name: Deploy Pages Site
+    needs:
+      - build
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      pages: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
