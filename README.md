@@ -32,6 +32,12 @@ Install the latest published binary:
 curl -fsSL https://soakes.github.io/s3ctl/install.sh | bash
 ```
 
+On macOS, use the installer instead of manually unpacking the release archive.
+The published macOS binaries are not Apple-notarized yet, so manually extracted
+downloads may be blocked by Gatekeeper unless the quarantine marker is removed.
+The installer handles that step after placing the binary in a user-owned bin
+directory.
+
 Plan a single bucket with generated scoped credentials:
 
 ```bash
@@ -77,14 +83,15 @@ Published release channels are designed to cover the normal operator paths:
 - a signed APT repository when archive signing secrets are configured
 - a multi-arch GHCR image
 
-Direct installer:
+Direct installer, recommended for macOS:
 
 ```bash
 curl -fsSL https://soakes.github.io/s3ctl/install.sh | bash
 ```
 
-On macOS, the installer defaults to a user-owned bin directory. It prefers an
-existing home bin path already present in `PATH` such as `$HOME/.local/bin`,
+On macOS, install via this script unless you specifically need to handle the
+archive yourself. The installer defaults to a user-owned bin directory, prefers
+an existing home bin path already present in `PATH` such as `$HOME/.local/bin`,
 `$HOME/bin`, or `$HOME/.bin`, and otherwise uses `$HOME/.local/bin` with a PATH
 hint. It also clears the macOS download quarantine marker from the installed
 binary.
