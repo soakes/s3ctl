@@ -211,19 +211,23 @@ Example default user config:
 {
   "endpoint": "https://objects.example.com",
   "region": "us-east-1",
-  "profile": "production",
+  "access_key": "MASTER_ACCESS_KEY_ID",
+  "secret_key": "MASTER_SECRET_ACCESS_KEY",
   "create_scoped_credentials": true,
-  "credential_policy_template": "bucket-readwrite",
-  "iam_user_prefix": "s3ctl-",
-  "iam_path": "/s3ctl/"
+  "credential_policy_template": "bucket-readwrite"
 }
 ```
+
+Use either `profile` or explicit `access_key` and `secret_key` values, not both. Add
+`session_token` when your master credentials are temporary. Prefer environment
+variables for real secrets when possible; if you keep them in the default user config,
+store that file outside the repository and restrict its permissions.
 
 Install that as your per-user default:
 
 ```bash
-mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/s3ctl"
-cp ./examples/user-config.json "${XDG_CONFIG_HOME:-$HOME/.config}/s3ctl/config.json"
+install -d -m 700 "${XDG_CONFIG_HOME:-$HOME/.config}/s3ctl"
+install -m 600 ./examples/user-config.json "${XDG_CONFIG_HOME:-$HOME/.config}/s3ctl/config.json"
 ```
 
 ## Environment Variables
@@ -258,16 +262,20 @@ AWS-standard variables such as `AWS_PROFILE`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_A
 
 Bucket policy templates:
 
-- `deny-insecure-transport`
-- `public-read`
+| Template | Coverage |
+| --- | --- |
+| `deny-insecure-transport` | Denies all S3 actions against the bucket and objects when requests do not use secure transport. |
+| `public-read` | Allows public `s3:GetObject` access to objects in the bucket. |
 
 Scoped credential policy templates:
 
-- `bucket-readonly`
-- `bucket-readwrite`
-- `bucket-admin`
+| Template | Coverage |
+| --- | --- |
+| `bucket-readonly` | Allows bucket location lookup, bucket listing, and object reads for one bucket. |
+| `bucket-readwrite` | Allows bucket location lookup, bucket listing, object reads, writes, deletes, and multipart upload operations for one bucket. |
+| `bucket-admin` | Allows all S3 actions against one bucket and its objects. |
 
-By default, generated scoped credentials use `bucket-readwrite`, generated IAM user names use the `s3ctl-` prefix, and generated IAM users are created under the `/s3ctl/` path.
+By default, generated scoped credentials use `bucket-readwrite`, generated IAM user names are derived directly from bucket names, and no IAM path is set. Configure `iam_user_prefix`, `--iam-user-prefix`, or `S3CTL_IAM_USER_PREFIX` when generated user names should share a prefix. Configure `iam_path`, `--iam-path`, or `S3CTL_IAM_PATH` when generated users should be created under an IAM path.
 
 ## IAM Notes
 
