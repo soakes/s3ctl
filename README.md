@@ -29,7 +29,7 @@ make build
 Install the latest published binary:
 
 ```bash
-curl -fsSL https://soakes.github.io/s3ctl/install.sh | sh
+curl -fsSL https://soakes.github.io/s3ctl/install.sh | bash
 ```
 
 Plan a single bucket with generated scoped credentials:
@@ -80,19 +80,33 @@ Published release channels are designed to cover the normal operator paths:
 Direct installer:
 
 ```bash
-curl -fsSL https://soakes.github.io/s3ctl/install.sh | sh
+curl -fsSL https://soakes.github.io/s3ctl/install.sh | bash
+```
+
+On macOS, the installer defaults to a user-owned bin directory. It prefers an
+existing home bin path already present in `PATH` such as `$HOME/.local/bin`,
+`$HOME/bin`, or `$HOME/.bin`, and otherwise uses `$HOME/.local/bin` with a PATH
+hint. It also clears the macOS download quarantine marker from the installed
+binary.
+
+If you download and extract a macOS archive manually, Finder may block the binary
+because the release is not Apple-notarized yet. Prefer the installer, or clear
+the quarantine marker yourself after verifying the checksum:
+
+```bash
+xattr -d com.apple.quarantine ./s3ctl-darwin-arm64
 ```
 
 Pinned installer run:
 
 ```bash
-curl -fsSL https://soakes.github.io/s3ctl/install.sh | sh -s -- --version v1.2.3
+curl -fsSL https://soakes.github.io/s3ctl/install.sh | bash -s -- --version v1.2.3
 ```
 
 Custom install location:
 
 ```bash
-curl -fsSL https://soakes.github.io/s3ctl/install.sh | sh -s -- --install-dir /usr/local/bin
+curl -fsSL https://soakes.github.io/s3ctl/install.sh | bash -s -- --install-dir "$HOME/.local/bin"
 ```
 
 Direct Debian package:

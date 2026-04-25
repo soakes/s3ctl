@@ -264,10 +264,10 @@ function aptASCIIKeyURL(metadata) {
 function releaseInstallCommand(metadata) {
   const release = metadata.latest_release;
   if (release?.tag_name) {
-    return `curl -fsSL ${metadata.install_script_url} | sh -s -- --version ${release.tag_name}`;
+    return `curl -fsSL ${metadata.install_script_url} | bash -s -- --version ${release.tag_name}`;
   }
 
-  return `curl -fsSL ${metadata.install_script_url} | sh`;
+  return `curl -fsSL ${metadata.install_script_url} | bash`;
 }
 
 function renderAssetList(release) {
@@ -331,8 +331,8 @@ function renderCommands(metadata) {
 
   if (installScriptNote) {
     installScriptNote.textContent = release?.tag_name
-      ? `Pinned to ${release.tag_name}. Add --install-dir /custom/path or --binary-name another-name when you need a non-default install target.`
-      : "The installer supports --version, --install-dir, and --binary-name for more controlled installs.";
+      ? `Pinned to ${release.tag_name}. macOS installs into a user-owned home bin dir and clears the quarantine marker.`
+      : "The installer supports --version, --install-dir, and --binary-name; macOS uses a user-owned home bin dir.";
   }
 
   if (containerCommand) {

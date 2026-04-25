@@ -4,8 +4,13 @@ set -euo pipefail
 repo="${S3CTL_INSTALL_REPO:-soakes/s3ctl}"
 project="${S3CTL_INSTALL_PROJECT:-s3ctl}"
 binary_name="${S3CTL_INSTALL_BINARY_NAME:-s3ctl}"
-install_dir="${INSTALL_DIR:-/usr/local/bin}"
+install_dir="${INSTALL_DIR:-}"
+install_dir_explicit=false
 version="${VERSION:-latest}"
+
+if [ -n "${INSTALL_DIR:-}" ]; then
+  install_dir_explicit=true
+fi
 
 usage() {
   cat <<EOF
@@ -15,7 +20,8 @@ Install the published s3ctl binary for the current platform.
 
 Options:
   --version <tag|latest>      Release version to install (default: latest)
-  --install-dir <path>        Destination directory for the binary (default: /usr/local/bin)
+  --install-dir <path>        Destination directory for the binary
+                               (default: macOS home bin dir, otherwise /usr/local/bin)
   --binary-name <name>        Installed binary name (default: s3ctl)
   --repo <owner/repo>         GitHub repository to install from (default: soakes/s3ctl)
   --project <name>            Release asset name prefix (default: s3ctl)
@@ -47,6 +53,11 @@ parse_args() {
           exit 1
         }
         install_dir="$2"
+        [ -n "${install_dir}" ] || {
+          printf 'empty value for %s\n' "$1" >&2
+          exit 1
+        }
+        install_dir_explicit=true
         shift 2
         ;;
       --binary-name)
@@ -126,6 +137,61 @@ detect_arch() {
   esac
 }
 
+path_contains_dir() {
+  local dir="$1"
+  case ":${PATH:-}:" in
+    *:"${dir}":*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+default_user_install_dir() {
+  if [ -z "${HOME:-}" ]; then
+    printf 'unable to resolve a user install directory because HOME is unset\n' >&2
+    exit 1
+  fi
+
+  local candidate
+  for candidate in "${HOME}/.local/bin" "${HOME}/bin" "${HOME}/.bin"; do
+    if path_contains_dir "${candidate}"; then
+      printf '%s\n' "${candidate}"
+      return 0
+    fi
+  done
+
+  for candidate in "${HOME}/.local/bin" "${HOME}/bin" "${HOME}/.bin"; do
+    if [ -d "${candidate}" ] && [ -w "${candidate}" ]; then
+      printf '%s\n' "${candidate}"
+      return 0
+    fi
+  done
+
+  printf '%s\n' "${HOME}/.local/bin"
+}
+
+default_install_dir() {
+  case "$1" in
+    darwin) default_user_install_dir ;;
+    *) printf '/usr/local/bin\n' ;;
+  esac
+}
+
+warn_if_install_dir_not_on_path() {
+  local dir="$1"
+  if ! path_contains_dir "${dir}"; then
+    printf 'warning: %s is not on PATH; add it with:\n  export PATH="%s:$PATH"\n' "${dir}" "${dir}" >&2
+  fi
+}
+
+clear_macos_quarantine() {
+  local binary_path="$1"
+  if [ "${resolved_os}" != "darwin" ] || ! command -v xattr >/dev/null 2>&1; then
+    return 0
+  fi
+
+  xattr -d com.apple.quarantine "${binary_path}" >/dev/null 2>&1 || true
+}
+
 download_to() {
   local url="$1"
   local output_path="$2"
@@ -199,6 +265,9 @@ require_command tar
 parse_args "$@"
 resolved_os="$(detect_os)"
 resolved_arch="$(detect_arch)"
+if [ -z "${install_dir}" ]; then
+  install_dir="$(default_install_dir "${resolved_os}")"
+fi
 resolved_version="$(resolve_version)"
 
 if [ -z "${resolved_version}" ]; then
@@ -239,5 +308,9 @@ fi
 
 install -d "${install_dir}"
 install -m 0755 "${extracted_binary}" "${install_dir}/${binary_name}"
+clear_macos_quarantine "${install_dir}/${binary_name}"
 
 printf 'installed %s %s to %s/%s\n' "${project}" "${resolved_version}" "${install_dir}" "${binary_name}"
+if [ "${install_dir_explicit}" = false ]; then
+  warn_if_install_dir_not_on_path "${install_dir}"
+fi
