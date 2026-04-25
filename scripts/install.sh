@@ -145,6 +145,20 @@ path_contains_dir() {
   esac
 }
 
+is_user_install_dir() {
+  local dir="$1"
+  case "${dir}" in
+    "${HOME}/.local/bin"|\
+    "${HOME}/bin"|\
+    "${HOME}/.bin")
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 default_user_install_dir() {
   if [ -z "${HOME:-}" ]; then
     printf 'unable to resolve a user install directory because HOME is unset\n' >&2
@@ -152,12 +166,18 @@ default_user_install_dir() {
   fi
 
   local candidate
-  for candidate in "${HOME}/.local/bin" "${HOME}/bin" "${HOME}/.bin"; do
-    if path_contains_dir "${candidate}"; then
-      printf '%s\n' "${candidate}"
+  local path_dir
+  local old_ifs="${IFS}"
+  IFS=:
+  for path_dir in ${PATH:-}; do
+    IFS="${old_ifs}"
+    if is_user_install_dir "${path_dir}"; then
+      printf '%s\n' "${path_dir}"
       return 0
     fi
+    IFS=:
   done
+  IFS="${old_ifs}"
 
   for candidate in "${HOME}/.local/bin" "${HOME}/bin" "${HOME}/.bin"; do
     if [ -d "${candidate}" ] && [ -w "${candidate}" ]; then
@@ -179,7 +199,30 @@ default_install_dir() {
 warn_if_install_dir_not_on_path() {
   local dir="$1"
   if ! path_contains_dir "${dir}"; then
-    printf 'warning: %s is not on PATH; add it with:\n  export PATH="%s:$PATH"\n' "${dir}" "${dir}" >&2
+    printf "warning: %s is not on PATH; add it with:\n  export PATH=\"%s:\$PATH\"\n" "${dir}" "${dir}" >&2
+  fi
+}
+
+warn_if_binary_shadowed() {
+  local installed_path="$1"
+  local found_path=""
+  local path_dir
+  local old_ifs="${IFS}"
+
+  IFS=:
+  for path_dir in ${PATH:-}; do
+    IFS="${old_ifs}"
+    if [ -x "${path_dir}/${binary_name}" ]; then
+      found_path="${path_dir}/${binary_name}"
+      break
+    fi
+    IFS=:
+  done
+  IFS="${old_ifs}"
+
+  if [ -n "${found_path}" ] && [ "${found_path}" != "${installed_path}" ]; then
+    printf 'warning: %s resolves before the installed binary at %s\n' "${found_path}" "${installed_path}" >&2
+    printf '         remove the older copy or move %s earlier in PATH, then run %s in zsh.\n' "${install_dir}" 'rehash' >&2
   fi
 }
 
@@ -306,7 +349,9 @@ if [ -z "${extracted_binary}" ]; then
   exit 1
 fi
 
-install -d "${install_dir}"
+if [ ! -d "${install_dir}" ]; then
+  install -d "${install_dir}"
+fi
 install -m 0755 "${extracted_binary}" "${install_dir}/${binary_name}"
 clear_macos_quarantine "${install_dir}/${binary_name}"
 
@@ -314,3 +359,4 @@ printf 'installed %s %s to %s/%s\n' "${project}" "${resolved_version}" "${instal
 if [ "${install_dir_explicit}" = false ]; then
   warn_if_install_dir_not_on_path "${install_dir}"
 fi
+warn_if_binary_shadowed "${install_dir}/${binary_name}"
