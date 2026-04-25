@@ -16,11 +16,13 @@ type mockIAMClient struct {
 	deleteUserPolicyErr    error
 	createAccessKeyErr     error
 	deleteUserErr          error
+	createUserInput        *iam.CreateUserInput
 	deleteUserCalled       bool
 	deleteUserPolicyCalled bool
 }
 
-func (m *mockIAMClient) CreateUser(context.Context, *iam.CreateUserInput, ...func(*iam.Options)) (*iam.CreateUserOutput, error) {
+func (m *mockIAMClient) CreateUser(_ context.Context, input *iam.CreateUserInput, _ ...func(*iam.Options)) (*iam.CreateUserOutput, error) {
+	m.createUserInput = input
 	return &iam.CreateUserOutput{}, m.createUserErr
 }
 
@@ -94,5 +96,55 @@ func TestCreateScopedCredentialsCleansUpPolicyAndUserWhenAccessKeyFails(t *testi
 	}
 	if !client.deleteUserCalled {
 		t.Fatal("expected cleanup to delete IAM user")
+	}
+}
+
+func TestCreateScopedCredentialsOmitsDefaultIAMPath(t *testing.T) {
+	client := &mockIAMClient{}
+
+	_, err := createScopedCredentials(context.Background(), client, provisionTarget{
+		Bucket:                   "app-data",
+		CredentialPolicyTemplate: "bucket-readwrite",
+	}, settings{
+		IAMPath:                  defaultIAMPath,
+		IAMUserPrefix:            defaultIAMUserPrefix,
+		CredentialPolicyTemplate: defaultCredentialPolicyTemplate,
+	})
+	if err != nil {
+		t.Fatalf("createScopedCredentials returned error: %v", err)
+	}
+	if client.createUserInput == nil {
+		t.Fatal("expected CreateUser input to be captured")
+	}
+	if client.createUserInput.Path != nil {
+		t.Fatalf("expected IAM path to be omitted by default, got %q", aws.ToString(client.createUserInput.Path))
+	}
+	if aws.ToString(client.createUserInput.UserName) != "app-data" {
+		t.Fatalf("expected generated IAM user name without prefix, got %q", aws.ToString(client.createUserInput.UserName))
+	}
+}
+
+func TestCreateScopedCredentialsUsesConfiguredIAMPath(t *testing.T) {
+	client := &mockIAMClient{}
+
+	_, err := createScopedCredentials(context.Background(), client, provisionTarget{
+		Bucket:                   "app-data",
+		CredentialPolicyTemplate: "bucket-readwrite",
+	}, settings{
+		IAMPath:                  "/s3ctl/",
+		IAMUserPrefix:            "svc-",
+		CredentialPolicyTemplate: defaultCredentialPolicyTemplate,
+	})
+	if err != nil {
+		t.Fatalf("createScopedCredentials returned error: %v", err)
+	}
+	if client.createUserInput == nil {
+		t.Fatal("expected CreateUser input to be captured")
+	}
+	if aws.ToString(client.createUserInput.Path) != "/s3ctl/" {
+		t.Fatalf("expected configured IAM path, got %q", aws.ToString(client.createUserInput.Path))
+	}
+	if aws.ToString(client.createUserInput.UserName) != "svc-app-data" {
+		t.Fatalf("expected generated IAM user name with prefix, got %q", aws.ToString(client.createUserInput.UserName))
 	}
 }

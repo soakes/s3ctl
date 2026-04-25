@@ -9,6 +9,20 @@ import (
 	"testing"
 )
 
+func isolatedEnv(t *testing.T, values map[string]string) map[string]string {
+	t.Helper()
+
+	tempDir := t.TempDir()
+	env := map[string]string{
+		"HOME":            filepath.Join(tempDir, "home"),
+		"XDG_CONFIG_HOME": filepath.Join(tempDir, "xdg"),
+	}
+	for key, value := range values {
+		env[key] = value
+	}
+	return env
+}
+
 func TestBuildBucketPolicyPublicRead(t *testing.T) {
 	document, err := buildBucketPolicy("demo-bucket", "public-read")
 	if err != nil {
@@ -57,9 +71,9 @@ func TestResolveSettingsReadsConfigAndEnv(t *testing.T) {
 
 	cfg, parsed, err := resolveSettings(
 		[]string{"--config", configPath},
-		map[string]string{
+		isolatedEnv(t, map[string]string{
 			"S3CTL_BUCKET_NAME": "env-bucket",
-		},
+		}),
 	)
 	if err != nil {
 		t.Fatalf("resolveSettings returned error: %v", err)
@@ -113,10 +127,10 @@ func TestLoadConfigResolvesRelativePaths(t *testing.T) {
 func TestResolveSettingsSupportsLegacyEnvAliases(t *testing.T) {
 	cfg, parsed, err := resolveSettings(
 		[]string{},
-		map[string]string{
+		isolatedEnv(t, map[string]string{
 			"S3CTL_BUCKET":   "legacy-bucket",
 			"S3CTL_ENDPOINT": "https://legacy.example.com",
-		},
+		}),
 	)
 	if err != nil {
 		t.Fatalf("resolveSettings returned error: %v", err)
@@ -233,6 +247,16 @@ func TestResolvedIAMUserNameUsesPrefix(t *testing.T) {
 	}
 }
 
+func TestResolvedIAMUserNameAllowsEmptyPrefix(t *testing.T) {
+	userName, err := resolvedIAMUserName(provisionTarget{Bucket: "my-bucket"}, "")
+	if err != nil {
+		t.Fatalf("resolvedIAMUserName returned error: %v", err)
+	}
+	if userName != "my-bucket" {
+		t.Fatalf("expected generated IAM user name without prefix, got %q", userName)
+	}
+}
+
 func TestResolvedIAMUserNameTrimsExplicitValue(t *testing.T) {
 	userName, err := resolvedIAMUserName(provisionTarget{IAMUserName: "  app-user  "}, "svc-")
 	if err != nil {
@@ -301,7 +325,7 @@ func TestMainWithEnvShowsErrorAndUsageForValidationFailures(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	exitCode := MainWithEnv([]string{"--create-scoped-credentials"}, map[string]string{}, &stdout, &stderr)
+	exitCode := MainWithEnv([]string{"--create-scoped-credentials"}, isolatedEnv(t, nil), &stdout, &stderr)
 
 	if exitCode != 1 {
 		t.Fatalf("expected exit code 1, got %d", exitCode)
@@ -323,7 +347,7 @@ func TestMainWithEnvDryRunShowsScopedCredentials(t *testing.T) {
 
 	exitCode := MainWithEnv(
 		[]string{"--bucket", "app-data", "--create-scoped-credentials", "--dry-run"},
-		map[string]string{},
+		isolatedEnv(t, nil),
 		&stdout,
 		&stderr,
 	)
@@ -337,7 +361,7 @@ func TestMainWithEnvDryRunShowsScopedCredentials(t *testing.T) {
 	if !strings.Contains(stdout.String(), "Bucket create planned: yes") {
 		t.Fatalf("expected dry-run planning wording, got %q", stdout.String())
 	}
-	if !strings.Contains(stdout.String(), "IAM user: s3ctl-app-data") {
+	if !strings.Contains(stdout.String(), "IAM user: app-data") {
 		t.Fatalf("expected scoped credential details, got %q", stdout.String())
 	}
 }

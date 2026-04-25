@@ -100,7 +100,7 @@ jobs:
             --bucket app-data \
             --create-scoped-credentials \
             --dry-run > /tmp/s3ctl-single.txt
-          grep -F 'IAM user: s3ctl-app-data' /tmp/s3ctl-single.txt
+          grep -F 'IAM user: app-data' /tmp/s3ctl-single.txt
 
       - name: Validate published platforms
         uses: docker/build-push-action@v7

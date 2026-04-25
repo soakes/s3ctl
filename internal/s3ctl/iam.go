@@ -55,9 +55,8 @@ func createScopedCredentials(ctx context.Context, client iamAPI, target provisio
 		return scopedCredentialResult{}, err
 	}
 
-	_, err = client.CreateUser(ctx, &iam.CreateUserInput{
+	createUserInput := &iam.CreateUserInput{
 		UserName: aws.String(userName),
-		Path:     aws.String(cfg.IAMPath),
 		Tags: []iamtypes.Tag{
 			{
 				Key:   aws.String("ManagedBy"),
@@ -68,7 +67,12 @@ func createScopedCredentials(ctx context.Context, client iamAPI, target provisio
 				Value: aws.String(target.Bucket),
 			},
 		},
-	})
+	}
+	if iamPath := strings.TrimSpace(cfg.IAMPath); iamPath != "" {
+		createUserInput.Path = aws.String(iamPath)
+	}
+
+	_, err = client.CreateUser(ctx, createUserInput)
 	if err != nil {
 		return scopedCredentialResult{}, fmt.Errorf("failed to create IAM user %q for bucket %q: %w", userName, target.Bucket, err)
 	}
@@ -187,10 +191,7 @@ func resolvedIAMUserName(target provisionTarget, prefix string) (string, error) 
 		return explicit, nil
 	}
 
-	if strings.TrimSpace(prefix) == "" {
-		prefix = defaultIAMUserPrefix
-	}
-
+	prefix = strings.TrimSpace(prefix)
 	candidate := prefix + sanitizeIAMUserComponent(target.Bucket)
 	candidate = strings.Trim(candidate, "-_.")
 	if candidate == "" {

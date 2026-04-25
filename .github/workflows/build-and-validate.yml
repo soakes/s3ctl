@@ -118,7 +118,7 @@ jobs:
 
           ./dist/s3ctl --bucket app-data --create-scoped-credentials --dry-run > /tmp/s3ctl-single.txt
           grep -F 'Bucket create planned: yes' /tmp/s3ctl-single.txt
-          grep -F 'IAM user: s3ctl-app-data' /tmp/s3ctl-single.txt
+          grep -F 'IAM user: app-data' /tmp/s3ctl-single.txt
 
           ./dist/s3ctl --batch-file examples/s3ctl-batch.csv --create-scoped-credentials --dry-run --output json > /tmp/s3ctl-batch.json
           grep -F '"bucket_name": "logs-archive"' /tmp/s3ctl-batch.json
@@ -129,7 +129,7 @@ jobs:
           S3CTL_CREATE_SCOPED_CREDENTIALS=true \
           ./dist/s3ctl --dry-run > /tmp/s3ctl-env.txt
           grep -F 'Bucket: env-bucket' /tmp/s3ctl-env.txt
-          grep -F 'IAM user: s3ctl-env-bucket' /tmp/s3ctl-env.txt
+          grep -F 'IAM user: env-bucket' /tmp/s3ctl-env.txt
 
           mkdir -p /tmp/s3ctl-config-home/s3ctl
           cat > /tmp/s3ctl-config-home/s3ctl/config.json <<'EOF'
@@ -141,4 +141,4 @@ jobs:
           XDG_CONFIG_HOME=/tmp/s3ctl-config-home ./dist/s3ctl --bucket auto-config --dry-run > /tmp/s3ctl-default-config.txt
           grep -F 'Bucket: auto-config' /tmp/s3ctl-default-config.txt
           grep -F 'Endpoint: https://config.example.com' /tmp/s3ctl-default-config.txt
-          grep -F 'IAM user: s3ctl-auto-config' /tmp/s3ctl-default-config.txt
+          grep -F 'IAM user: auto-config' /tmp/s3ctl-default-config.txt

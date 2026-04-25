@@ -34,8 +34,8 @@ const binaryName = "s3ctl"
 
 const (
 	defaultRegion                   = "us-east-1"
-	defaultIAMUserPrefix            = "s3ctl-"
-	defaultIAMPath                  = "/s3ctl/"
+	defaultIAMUserPrefix            = ""
+	defaultIAMPath                  = ""
 	defaultCredentialPolicyTemplate = "bucket-readwrite"
 	defaultConfigFileName           = "config.json"
 	defaultOutputFormat             = "text"
@@ -391,8 +391,8 @@ func newFlagSet(flags *cliFlags) *pflag.FlagSet {
 	fs.BoolVar(&flags.CreateScopedCredentials, "create-scoped-credentials", false, "Create a new scoped IAM-style user and access key for each bucket")
 	fs.StringVar(&flags.IAMEndpoint, "iam-endpoint", "", "Override the IAM API endpoint used for scoped credential provisioning")
 	fs.StringVar(&flags.IAMUserName, "iam-user-name", "", "Explicit IAM user name for a single bucket run")
-	fs.StringVar(&flags.IAMUserPrefix, "iam-user-prefix", defaultIAMUserPrefix, "Prefix used when generating IAM user names automatically")
-	fs.StringVar(&flags.IAMPath, "iam-path", defaultIAMPath, "IAM path used for generated users")
+	fs.StringVar(&flags.IAMUserPrefix, "iam-user-prefix", defaultIAMUserPrefix, "Optional prefix used when generating IAM user names automatically")
+	fs.StringVar(&flags.IAMPath, "iam-path", defaultIAMPath, "Optional IAM path used for generated users")
 	fs.StringVar(&flags.CredentialPolicyTemplate, "credential-policy-template", defaultCredentialPolicyTemplate, "Built-in scoped credential policy template")
 	fs.StringVarP(&flags.Output, "output", "o", defaultOutputFormat, "Output format: text or json")
 	fs.BoolVar(&flags.DryRun, "dry-run", false, "Show the planned actions without making changes")
@@ -591,8 +591,8 @@ func loadEnv(env map[string]string) (source, error) {
 		CreateScopedCredentials:  createScopedCredentials,
 		IAMEndpoint:              strPtrIfSet(envValue(env, envAliases.IAMEndpointURL...)),
 		IAMUserName:              strPtrIfSet(envValue(env, envAliases.IAMUserName...)),
-		IAMUserPrefix:            strPtrIfSet(envValue(env, envAliases.IAMUserPrefix...)),
-		IAMPath:                  strPtrIfSet(envValue(env, envAliases.IAMPath...)),
+		IAMUserPrefix:            envStringPtr(env, envAliases.IAMUserPrefix...),
+		IAMPath:                  envStringPtr(env, envAliases.IAMPath...),
 		CredentialPolicyTemplate: strPtrIfSet(envValue(env, envAliases.CredentialPolicyTmpl...)),
 		Output:                   strPtrIfSet(envValue(env, envAliases.OutputFormat...)),
 		DryRun:                   dryRun,
@@ -1265,6 +1265,16 @@ func strPtrIfSet(value string) *string {
 	}
 	valueCopy := value
 	return &valueCopy
+}
+
+func envStringPtr(env map[string]string, names ...string) *string {
+	for _, name := range names {
+		if value, ok := env[name]; ok {
+			valueCopy := value
+			return &valueCopy
+		}
+	}
+	return nil
 }
 
 func stringPtrIfField(data []byte, field, value string) *string {
