@@ -9,7 +9,6 @@ package_name="${5:-s3ctl}"
 package_group="${package_name:0:1}"
 pool_dir="${site_root}/pool/${component}/${package_group}/${package_name}"
 dist_relative_root="dists/${suite}"
-dist_root="${site_root}/${dist_relative_root}"
 
 mkdir -p "${pool_dir}"
 

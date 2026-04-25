@@ -67,9 +67,9 @@ format_commit_ref() {
   local short_hash="$2"
 
   if [ -n "${repo_url}" ]; then
-    printf '[`%s`](%s/commit/%s)\n' "${short_hash}" "${repo_url}" "${hash}"
+    printf "[\`%s\`](%s/commit/%s)\n" "${short_hash}" "${repo_url}" "${hash}"
   else
-    printf '`%s`\n' "${short_hash}"
+    printf "\`%s\`\n" "${short_hash}"
   fi
 }
 
@@ -77,9 +77,9 @@ format_tag_ref() {
   local tag="$1"
 
   if [ -n "${repo_url}" ]; then
-    printf '[`%s`](%s/releases/tag/%s)\n' "${tag}" "${repo_url}" "${tag}"
+    printf "[\`%s\`](%s/releases/tag/%s)\n" "${tag}" "${repo_url}" "${tag}"
   else
-    printf '`%s`\n' "${tag}"
+    printf "\`%s\`\n" "${tag}"
   fi
 }
 
@@ -88,14 +88,14 @@ format_compare_ref() {
   local to_ref_name="$2"
 
   if [ -n "${repo_url}" ]; then
-    printf '[`%s...%s`](%s/compare/%s...%s)\n' \
+    printf "[\`%s...%s\`](%s/compare/%s...%s)\n" \
       "${from_ref}" \
       "${to_ref_name}" \
       "${repo_url}" \
       "${from_ref}" \
       "${to_ref_name}"
   else
-    printf '`%s...%s`\n' "${from_ref}" "${to_ref_name}"
+    printf "\`%s...%s\`\n" "${from_ref}" "${to_ref_name}"
   fi
 }
 
@@ -351,7 +351,7 @@ done
 
 {
   printf '## Release Overview\n\n'
-  printf '%s for `%s`.\n\n' "${release_label}" "${release_target}"
+  printf "%s for \`%s\`.\n\n" "${release_label}" "${release_target}"
   printf -- '- Published tag: %s\n' "${release_tag_ref}"
 
   if [ -n "${compare_ref}" ]; then
@@ -410,9 +410,9 @@ done
   fi
 
   printf '## Published Artifacts\n\n'
-  printf -- '- Release binaries for `linux/amd64`, `linux/arm64`, `linux/arm/v7`, `darwin/amd64`, and `darwin/arm64`\n'
-  printf -- '- Debian packages for `amd64`, `arm64`, and `armhf`\n'
+  printf -- "- Release binaries for \`linux/amd64\`, \`linux/arm64\`, \`linux/arm/v7\`, \`darwin/amd64\`, and \`darwin/arm64\`\n"
+  printf -- "- Debian packages for \`amd64\`, \`arm64\`, and \`armhf\`\n"
   printf -- '- SHA256 checksums attached to the release\n'
-  printf -- '- Container images published to `ghcr.io/soakes/s3ctl`\n'
+  printf -- "- Container images published to \`ghcr.io/soakes/s3ctl\`\n"
   printf -- '- The GitHub Pages release hub is refreshed with install commands, release assets, and APT repository metadata\n'
 } > "${output_path}"

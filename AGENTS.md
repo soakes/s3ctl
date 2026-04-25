@@ -45,6 +45,10 @@
   ```bash
   make build
   ```
+- Lint shell scripts:
+  ```bash
+  shellcheck scripts/*.sh
+  ```
 
 ## Go Style & Quality Rules
 
@@ -81,6 +85,7 @@
 - If you change shell scripts, also run:
   ```bash
   bash -n scripts/*.sh
+  shellcheck scripts/*.sh
   ```
 - If you change website or release automation behavior, run the matching local
   validation that exercises those paths before considering the change complete.
