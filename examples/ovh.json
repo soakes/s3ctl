@@ -1,0 +1,11 @@
+{
+  "provider": "ovh",
+  "ovh_service_name": "PUBLIC_CLOUD_PROJECT_ID",
+  "ovh_client_id": "CLIENT_ID",
+  "ovh_client_secret": "CLIENT_SECRET",
+  "region": "UK",
+  "enable_versioning": true,
+  "ovh_encrypt_data": true,
+  "ovh_storage_policy_role": "readWrite",
+  "output": "json"
+}

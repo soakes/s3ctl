@@ -30,6 +30,8 @@ type iamAPI interface {
 }
 
 type scopedCredentialResult struct {
+	Provider        string `json:"provider,omitempty"`
+	UserID          string `json:"user_id,omitempty"`
 	UserName        string `json:"user_name"`
 	PolicyTemplate  string `json:"policy_template"`
 	AccessKeyID     string `json:"access_key_id"`

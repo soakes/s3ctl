@@ -1,0 +1,52 @@
+{
+  "name": "s3ctl-public-cloud-object-storage",
+  "description": "Allow the s3ctl service account to provision OVHcloud Public Cloud object storage buckets.",
+  "identities": [
+    "urn:v1:eu:identity:credential:ACCOUNT_ID/oauth2-CLIENT_ID"
+  ],
+  "resources": [
+    {
+      "urn": "urn:v1:eu:resource:publicCloudProject:PUBLIC_CLOUD_PROJECT_ID"
+    }
+  ],
+  "permissions": {
+    "allow": [
+      {
+        "action": "publicCloudProject:apiovh:get"
+      },
+      {
+        "action": "publicCloudProject:apiovh:user/create"
+      },
+      {
+        "action": "publicCloudProject:apiovh:user/delete"
+      },
+      {
+        "action": "publicCloudProject:apiovh:user/get"
+      },
+      {
+        "action": "publicCloudProject:apiovh:user/s3Credentials/create"
+      },
+      {
+        "action": "publicCloudProject:apiovh:user/s3Credentials/delete"
+      },
+      {
+        "action": "publicCloudProject:apiovh:user/s3Credentials/get"
+      },
+      {
+        "action": "publicCloudProject:apiovh:region/storage/create"
+      },
+      {
+        "action": "publicCloudProject:apiovh:region/storage/delete"
+      },
+      {
+        "action": "publicCloudProject:apiovh:region/storage/edit"
+      },
+      {
+        "action": "publicCloudProject:apiovh:region/storage/get"
+      },
+      {
+        "action": "publicCloudProject:apiovh:region/storage/policy/create"
+      }
+    ]
+  }
+}

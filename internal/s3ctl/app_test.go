@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func isolatedEnv(t *testing.T, values map[string]string) map[string]string {
@@ -277,6 +278,34 @@ func TestValidateSettingsRejectsStandaloneSessionToken(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "--session-token requires --access-key and --secret-key") {
 		t.Fatalf("unexpected validation error: %v", err)
+	}
+}
+
+func TestResolveSettingsReadsTimeoutFromEnvAndFlag(t *testing.T) {
+	cfg, _, err := resolveSettings(
+		[]string{"--bucket", "app-data"},
+		isolatedEnv(t, map[string]string{
+			"S3CTL_TIMEOUT": "10m",
+		}),
+	)
+	if err != nil {
+		t.Fatalf("resolveSettings returned error: %v", err)
+	}
+	if cfg.ParsedTimeout != 10*time.Minute {
+		t.Fatalf("expected env timeout, got %s", cfg.ParsedTimeout)
+	}
+
+	cfg, _, err = resolveSettings(
+		[]string{"--bucket", "app-data", "--timeout", "2m"},
+		isolatedEnv(t, map[string]string{
+			"S3CTL_TIMEOUT": "10m",
+		}),
+	)
+	if err != nil {
+		t.Fatalf("resolveSettings returned error: %v", err)
+	}
+	if cfg.ParsedTimeout != 2*time.Minute {
+		t.Fatalf("expected CLI timeout to win, got %s", cfg.ParsedTimeout)
 	}
 }
 

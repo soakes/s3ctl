@@ -15,6 +15,7 @@ It is designed for the common operational workflow:
 - optionally apply a bucket policy from a built-in template or JSON file
 - create a fresh access key and secret key for each bucket
 - attach a generated policy so each credential only has access to its own bucket
+- delete buckets with an explicit force guard after emptying their contents
 - drive the same workflow from flags, environment variables, JSON config, or CSV batch input
 
 ## Quick Start
@@ -41,7 +42,7 @@ directory.
 Plan a single bucket with generated scoped credentials:
 
 ```bash
-./dist/s3ctl \
+s3ctl \
   --bucket app-data \
   --endpoint https://objects.example.com \
   --region us-east-1 \
@@ -50,10 +51,51 @@ Plan a single bucket with generated scoped credentials:
   --dry-run
 ```
 
+Provision an OVHcloud Object Storage container and a dedicated S3 key:
+
+```bash
+s3ctl \
+  --provider ovh \
+  --bucket app-data \
+  --region UK \
+  --ovh-service-name PUBLIC_CLOUD_PROJECT_ID \
+  --output json
+```
+
+Rotate an existing OVHcloud bucket keypair:
+
+```bash
+s3ctl \
+  --provider ovh \
+  --bucket app-data \
+  --ovh-rotate-credentials \
+  --output json
+```
+
+Preview a bucket delete:
+
+```bash
+s3ctl \
+  --provider ovh \
+  --bucket app-data \
+  --delete \
+  --dry-run
+```
+
+Delete a bucket after checking the dry-run output:
+
+```bash
+s3ctl \
+  --provider ovh \
+  --bucket app-data \
+  --delete \
+  --force
+```
+
 Plan multiple buckets from repeated flags:
 
 ```bash
-./dist/s3ctl \
+s3ctl \
   --bucket app-data \
   --bucket logs-archive \
   --create-scoped-credentials \
@@ -64,7 +106,7 @@ Plan multiple buckets from repeated flags:
 Plan a batch from CSV:
 
 ```bash
-./dist/s3ctl \
+s3ctl \
   --batch-file ./examples/s3ctl-batch.csv \
   --endpoint https://objects.example.com \
   --region us-east-1 \
@@ -164,9 +206,9 @@ The website is built with Vite and the local preview flow falls back to
 
 For bulk runs, the normal pattern is:
 
-1. Define the shared S3 and IAM settings once with flags, env vars, or config.
+1. Define the shared provider settings once with flags, env vars, or config.
 2. Feed the bucket list in with repeated `--bucket` flags or `--batch-file`.
-3. Let `s3ctl` generate one IAM user and one access key pair per bucket.
+3. Let `s3ctl` generate one scoped user and one access key pair per bucket.
 
 Supported batch CSV columns:
 
@@ -212,7 +254,42 @@ Example config:
 Run it:
 
 ```bash
-./dist/s3ctl --config ./examples/s3ctl.json --dry-run --output json
+s3ctl --config ./examples/s3ctl.json --dry-run --output json
+```
+
+Example OVHcloud config with OAuth2 service account credentials:
+
+```json
+{
+  "provider": "ovh",
+  "ovh_service_name": "PUBLIC_CLOUD_PROJECT_ID",
+  "ovh_client_id": "CLIENT_ID",
+  "ovh_client_secret": "CLIENT_SECRET",
+  "region": "UK",
+  "enable_versioning": true,
+  "ovh_encrypt_data": true,
+  "ovh_storage_policy_role": "readWrite",
+  "output": "json"
+}
+```
+
+Classic OVH API application credentials are also supported:
+
+```json
+{
+  "provider": "ovh",
+  "ovh_service_name": "PROJECT_ID",
+  "ovh_application_key": "APPLICATION_KEY",
+  "ovh_application_secret": "APPLICATION_SECRET",
+  "ovh_consumer_key": "CONSUMER_KEY",
+  "region": "GRA"
+}
+```
+
+With that saved in your default config, this is enough:
+
+```bash
+s3ctl --bucket app-data
 ```
 
 Relative paths inside the config file are resolved from the config file directory, so config-local batch files and policy documents work cleanly.
@@ -224,7 +301,7 @@ Default user config path:
 
 When `--config` and `S3CTL_CONFIG_FILE` are unset, `s3ctl` will automatically load that
 default file if it exists. This is the right place for shared operator settings such as
-endpoint, region, profile, credentials, IAM defaults, and output preferences.
+provider, endpoint, region, profile, credentials, IAM/OVH defaults, and output preferences.
 
 Example default user config:
 
@@ -269,15 +346,38 @@ Primary variables:
 - `S3CTL_BUCKET_POLICY_FILE`
 - `S3CTL_BUCKET_POLICY_TEMPLATE`
 - `S3CTL_CREATE_SCOPED_CREDENTIALS`
+- `S3CTL_PROVIDER`
 - `S3CTL_IAM_ENDPOINT_URL`
 - `S3CTL_IAM_USER_NAME`
 - `S3CTL_IAM_USER_PREFIX`
 - `S3CTL_IAM_PATH`
 - `S3CTL_CREDENTIAL_POLICY_TEMPLATE`
+- `S3CTL_OVH_API_ENDPOINT`
+- `S3CTL_OVH_ACCESS_TOKEN`
+- `S3CTL_OVH_APPLICATION_KEY`
+- `S3CTL_OVH_APPLICATION_SECRET`
+- `S3CTL_OVH_CONSUMER_KEY`
+- `S3CTL_OVH_CLIENT_ID`
+- `S3CTL_OVH_CLIENT_SECRET`
+- `S3CTL_OVH_S3_ENDPOINT`
+- `S3CTL_OVH_SERVICE_NAME`
+- `S3CTL_OVH_PROJECT_ID`
+- `S3CTL_OVH_USER_ROLE`
+- `S3CTL_OVH_STORAGE_POLICY_ROLE`
+- `S3CTL_OVH_ENCRYPT_DATA`
+- `S3CTL_OVH_ROTATE_CREDENTIALS`
+- `S3CTL_DELETE_BUCKET`
+- `S3CTL_FORCE`
+- `S3CTL_TIMEOUT`
 - `S3CTL_OUTPUT_FORMAT`
 - `S3CTL_DRY_RUN`
 
 AWS-standard variables such as `AWS_PROFILE`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `AWS_REGION`, and `AWS_DEFAULT_REGION` are also supported where appropriate.
+
+OVHcloud auth can be set in `s3ctl` JSON config or environment. Configure one
+mode at a time: `ovh_client_id` with `ovh_client_secret` for OAuth2 service
+accounts, `ovh_access_token` for a short-lived token, or classic OVH API
+`ovh_application_key`, `ovh_application_secret`, and `ovh_consumer_key`.
 
 ## Built-In Templates
 
@@ -308,6 +408,271 @@ Scoped credential provisioning uses the IAM API in addition to the S3 API. The p
 - create IAM access keys
 
 AWS IAM is the default target. When you need an IAM-compatible alternative, use `--iam-endpoint` or `S3CTL_IAM_ENDPOINT_URL`.
+
+## Deleting Buckets
+
+Use `--delete` with one or more `--bucket` values to remove buckets instead of
+creating them. Actual deletes require `--force`; without it, `s3ctl` fails
+before making API calls. Use `--dry-run` to preview the target without needing
+`--force`.
+
+```bash
+s3ctl --bucket app-data --delete --dry-run
+s3ctl --bucket app-data --delete --force --timeout 30m
+```
+
+The S3 provider empties the bucket before deleting it. It deletes object
+versions and delete markers when the endpoint supports version listing, then
+deletes any remaining current objects and finally deletes the bucket.
+The S3 principal running the delete needs the matching list, object delete,
+object version delete, and bucket delete permissions.
+
+JSON config can also drive this mode:
+
+```json
+{
+  "bucket": "app-data",
+  "delete_bucket": true,
+  "force": true
+}
+```
+
+The shorter `"delete": true` config key is accepted as an alias for
+`"delete_bucket": true`.
+
+Keep `"force": true` out of shared default configs unless every run using that
+config should be allowed to delete buckets.
+
+Use `--timeout`, `S3CTL_TIMEOUT`, or `"timeout": "30m"` for large buckets or
+slower object-storage endpoints. The default timeout is `10m`.
+
+## OVHcloud Notes
+
+Use `--provider ovh` to create OVHcloud Object Storage through the Public Cloud
+API. OVHcloud calls buckets "containers"; `s3ctl` keeps the CLI wording as
+bucket because the resulting credentials are S3-compatible.
+
+The OVHcloud provider creates one Public Cloud user and one S3 credential pair
+per bucket, creates the container in `--region`, and attaches the user to that
+container with `--ovh-storage-policy-role` (`readWrite` by default). It does not
+apply S3 bucket policy documents; access is controlled through OVHcloud
+container policies.
+
+Required OVHcloud settings:
+
+- `provider`: `ovh`
+- `ovh_service_name`: the Public Cloud project ID/service name
+- one OVHcloud auth mode: OAuth2 service account credentials, an access token,
+  classic OVH API application credentials, or the official OVHcloud environment/config files
+- `region`: an OVHcloud Public Cloud/Object Storage region such as `UK`, `GRA`, `BHS`, `SBG`, or `EU-WEST-PAR`.
+  Use the uppercase region returned by OVHcloud's Public Cloud API. `s3ctl`
+  also accepts lowercase S3 endpoint regions such as `uk` and normalizes them
+  for OVHcloud API calls.
+
+Optional OVHcloud settings:
+
+- `ovh_api_endpoint`: endpoint name such as `ovh-eu`, `ovh-ca`, `ovh-us`, or a custom API URL
+- `ovh_client_id` and `ovh_client_secret`: OAuth2 service account credentials
+- `ovh_access_token`: short-lived OVHcloud access token
+- `ovh_application_key`, `ovh_application_secret`, and `ovh_consumer_key`: classic OVH API application credentials
+- `ovh_s3_endpoint`: override the returned S3 endpoint when the default
+  `https://s3.<region>.io.cloud.ovh.net` form is not right for your project
+- `ovh_user_role`: defaults to `objectstore_operator`
+- `ovh_storage_policy_role`: one of `admin`, `deny`, `readOnly`, or `readWrite`
+- `ovh_encrypt_data`: set to `true` to enable OVHcloud server-side encryption
+  with OVH-managed keys (`AES256` / SSE-OMK). When explicitly set to `false`,
+  `s3ctl` requests OVHcloud `plaintext` container storage.
+- `ovh_rotate_credentials`: set to `true` to rotate S3 credentials for the
+  existing OVHcloud container owner instead of creating a new container. Keep it
+  out of the normal provisioning config unless every run should be a rotation.
+
+### OVHcloud OAuth2 and IAM Setup
+
+Create the OAuth2 service account first. The official `ovhcloud` CLI is the
+cleanest route:
+
+Install the CLI from OVHcloud's official guide:
+`https://help.ovhcloud.com/csm/en-cli-getting-started?id=kb_article_view&sysparm_article=KB0072704`
+
+```bash
+brew install --cask ovh/tap/ovhcloud-cli
+```
+
+Without Homebrew:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ovh/ovhcloud-cli/main/install.sh | sh
+```
+
+Authenticate it with your OVHcloud account:
+
+```bash
+ovhcloud login
+```
+
+Then create the service account credentials for `s3ctl`:
+
+```bash
+ovhcloud account api oauth2 client create \
+  --name "s3ctl" \
+  --description "s3ctl bucket provisioning" \
+  --flow "CLIENT_CREDENTIALS"
+```
+
+OVHcloud returns a `clientId` and `clientSecret`; use those as `ovh_client_id`
+and `ovh_client_secret` in the `s3ctl` config.
+
+You can also create the OAuth2 client from the OVHcloud API console. Open the
+console for your account region, go to `POST /me/api/oauth2/client`, and submit
+this body:
+
+- EU: `https://eu.api.ovh.com/console/?branch=v1&section=%2Fme`
+- CA: `https://ca.api.ovh.com/console/?branch=v1&section=%2Fme`
+- US: `https://api.us.ovhcloud.com/console/?branch=v1&section=%2Fme`
+
+```json
+{
+  "callbackUrls": [],
+  "flow": "CLIENT_CREDENTIALS",
+  "name": "s3ctl",
+  "description": "s3ctl bucket provisioning"
+}
+```
+
+Next, grant that service account access to the Public Cloud project. The service
+account cannot grant access to itself; use the OVHcloud account/admin user or an
+existing identity with IAM administration rights.
+
+In OVHcloud Manager:
+
+1. Open **Identity, Security & Operations**.
+2. Open **Policies**.
+3. Create a policy named `s3ctl-object-storage`.
+4. Under **Identities**, select the `s3ctl` service account.
+5. Under **Product types**, select **Public Cloud Project**.
+6. Under **Resources**, select the project long ID shown under the project name,
+   for example `51ab2732562648349de40f72ac51c1c8`. Use this same value as
+   `ovh_service_name`; do not use the display name.
+7. For the first smoke test, authorise all actions on that selected project
+   resource. After confirming it works, tighten the policy to the actions below.
+
+Least-privilege actions for `s3ctl`:
+
+- `publicCloudProject:apiovh:get`
+- `publicCloudProject:apiovh:user/create`
+- `publicCloudProject:apiovh:user/delete`
+- `publicCloudProject:apiovh:user/get`
+- `publicCloudProject:apiovh:user/s3Credentials/create`
+- `publicCloudProject:apiovh:user/s3Credentials/delete`
+- `publicCloudProject:apiovh:user/s3Credentials/get`
+- `publicCloudProject:apiovh:region/storage/create`
+- `publicCloudProject:apiovh:region/storage/delete`
+- `publicCloudProject:apiovh:region/storage/edit`
+- `publicCloudProject:apiovh:region/storage/get`
+- `publicCloudProject:apiovh:region/storage/policy/create`
+
+The policy body in `examples/ovh-iam-policy.json` is a starting point for the
+API route, `POST /iam/policy`. Get the service account identity URN from
+`GET /me/api/oauth2/client/{clientId}`. OVHcloud documents the format as
+`urn:v1:<eu|ca>:identity:credential:<account-id>/oauth2-<clientId>`. Get the
+project resource URN from `GET /iam/resource` by selecting the
+`publicCloudProject` resource matching your Public Cloud project ID.
+
+Verify the policy before running `s3ctl`. With the same OAuth2 credentials,
+`GET /cloud/project` should list the project ID:
+
+```bash
+token="$(curl -fsS \
+  -d grant_type=client_credentials \
+  --data-urlencode "client_id=$OVH_CLIENT_ID" \
+  --data-urlencode "client_secret=$OVH_CLIENT_SECRET" \
+  -d scope=all \
+  https://www.ovh.com/auth/oauth2/token | jq -r .access_token)"
+
+curl -fsS -H "Authorization: Bearer $token" \
+  https://eu.api.ovh.com/1.0/cloud/project | jq .
+```
+
+Expected output should include the Public Cloud project ID:
+
+```json
+[
+  "51ab2732562648349de40f72ac51c1c8"
+]
+```
+
+If OVHcloud returns `This service does not exist` while the project ID is
+correct, the service account usually cannot see the project yet. Recheck the IAM
+policy identity, resource, and actions.
+
+### OVHcloud Credential Rotation
+
+Use `--ovh-rotate-credentials` or `"ovh_rotate_credentials": true` when a bucket
+already exists and you only want a fresh S3 access key and secret:
+
+```bash
+s3ctl --provider ovh --bucket app-data --ovh-rotate-credentials --output json
+```
+
+If using JSON config for a rotation run:
+
+```json
+{
+  "provider": "ovh",
+  "ovh_service_name": "PUBLIC_CLOUD_PROJECT_ID",
+  "ovh_client_id": "CLIENT_ID",
+  "ovh_client_secret": "CLIENT_SECRET",
+  "region": "UK",
+  "ovh_rotate_credentials": true,
+  "output": "json"
+}
+```
+
+Rotation looks up the existing container by bucket name, reads its `ownerId`,
+creates a new S3 credential pair for that OVH Public Cloud user, then deletes
+the previous S3 credentials for that user. The new secret is only returned once,
+so store the command output securely. If an old key cannot be deleted after the
+new key is created, `s3ctl` still prints the new credentials and includes a
+warning so the stale key can be removed manually.
+
+### OVHcloud Bucket Deletion
+
+OVHcloud buckets are containers, but the delete command still uses the bucket
+name:
+
+```bash
+s3ctl --provider ovh --bucket app-data --delete --force
+```
+
+For OVHcloud deletes, `s3ctl` looks up the container owner, creates a temporary
+S3 credential for that OVH Public Cloud user, empties the container through the
+S3-compatible API, deletes the container through the OVHcloud Public Cloud API,
+then deletes the user's S3 credentials and the OVH Public Cloud user. If the
+container is removed but a final credential/user cleanup call fails, the command
+prints a warning so the stale identity can be removed manually.
+
+For safety, OVHcloud delete and credential rotation only continue when the
+container owner looks bucket-dedicated: the OVH Public Cloud user description
+or username must match the bucket name, or the legacy description
+`s3ctl bucket <bucket>`. This prevents deleting all credentials from a shared
+manual OVH user.
+
+The application key, application secret, and consumer key flow is still
+supported as OVHcloud's classic API authentication path and can be used directly
+with `s3ctl` as well.
+
+For classic OVH API application credentials, use OVHcloud's token creation
+page. These links pre-fill the API rights `s3ctl` needs for Public Cloud bucket
+provisioning, but they do not create OAuth2 service account credentials:
+
+- EU: `https://eu.api.ovh.com/createToken/?GET=%2Fcloud%2Fproject%2F%2A&POST=%2Fcloud%2Fproject%2F%2A&DELETE=%2Fcloud%2Fproject%2F%2A`
+- CA: `https://ca.api.ovh.com/createToken/?GET=%2Fcloud%2Fproject%2F%2A&POST=%2Fcloud%2Fproject%2F%2A&DELETE=%2Fcloud%2Fproject%2F%2A`
+- US: `https://api.us.ovhcloud.com/createToken/?GET=%2Fcloud%2Fproject%2F%2A&POST=%2Fcloud%2Fproject%2F%2A&DELETE=%2Fcloud%2Fproject%2F%2A`
+
+After creating the token, paste the returned application key, application
+secret, and consumer key into `ovh_application_key`, `ovh_application_secret`,
+and `ovh_consumer_key`. To create `ovh_client_id` and `ovh_client_secret`,
+use `POST /me/api/oauth2/client` instead.
 
 ## Container
 
