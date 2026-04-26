@@ -81,7 +81,7 @@ build-release:
 		$(MAKE) build-cross GOOS="$${goos}" GOARCH="$${goarch}" GOARM="$${goarm}" OUTPUT="$${output}"; \
 		tar -C dist/release -czf "$${output}.tar.gz" "$(BINARY)-$${suffix}"; \
 	done
-	cd dist/release && $(SHASUM) *.tar.gz > $(BINARY)_SHA256SUMS
+	cd dist/release && $(SHASUM) *.tar.gz > SHA256SUMS
 
 package-deb:
 	test -n "$(BINARY_PATH)"

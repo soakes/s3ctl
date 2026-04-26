@@ -385,7 +385,7 @@ done
   printf '```bash\n'
   printf 'docker run --rm ghcr.io/soakes/s3ctl:%s --help\n' "${tag_name}"
   printf '```\n\n'
-  printf "Verify downloaded archives and packages with the attached \`s3ctl_SHA256SUMS\` file.\n\n"
+  printf "Verify downloaded archives and packages with the attached \`SHA256SUMS\` file.\n\n"
 
   if [ "${release_channel}" = "prerelease" ]; then
     printf "> This is a release candidate. It publishes tagged archives, Debian packages, checksums, and an \`:rc\` container image, but it does not move the stable APT channel or \`:latest\` container tag.\n\n"

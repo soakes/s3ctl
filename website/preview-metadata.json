@@ -53,8 +53,8 @@
         "size": 3019924
       },
       {
-        "name": "s3ctl_SHA256SUMS",
-        "browser_download_url": "https://github.com/soakes/s3ctl/releases/download/v0.1.2/s3ctl_SHA256SUMS",
+        "name": "SHA256SUMS",
+        "browser_download_url": "https://github.com/soakes/s3ctl/releases/download/v0.1.2/SHA256SUMS",
         "size": 721
       }
     ]

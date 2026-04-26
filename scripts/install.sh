@@ -321,7 +321,8 @@ fi
 asset_name="${project}-${resolved_os}-${resolved_arch}.tar.gz"
 release_base_url="https://github.com/${repo}/releases/download/${resolved_version}"
 asset_url="${release_base_url}/${asset_name}"
-checksums_url="${release_base_url}/${project}_SHA256SUMS"
+checksums_url="${release_base_url}/SHA256SUMS"
+legacy_checksums_url="${release_base_url}/${project}_SHA256SUMS"
 
 temp_dir="$(mktemp -d)"
 cleanup() {
@@ -330,11 +331,13 @@ cleanup() {
 trap cleanup EXIT
 
 archive_path="${temp_dir}/${asset_name}"
-checksums_path="${temp_dir}/${project}_SHA256SUMS"
+checksums_path="${temp_dir}/SHA256SUMS"
 
 printf 'downloading %s\n' "${asset_url}"
 download_to "${asset_url}" "${archive_path}"
-download_to "${checksums_url}" "${checksums_path}" || true
+download_to "${checksums_url}" "${checksums_path}" 2>/dev/null \
+  || download_to "${legacy_checksums_url}" "${checksums_path}" 2>/dev/null \
+  || true
 if [ -f "${checksums_path}" ]; then
   verify_checksum "${asset_name}" "${archive_path}" "${checksums_path}"
 fi
