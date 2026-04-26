@@ -35,6 +35,8 @@ archives, Debian packages, an APT package, and a container image.
 
 ---
 
+<a id="overview"></a>
+
 ## 📖 Overview
 
 `s3ctl` provisions S3-compatible buckets and automatically issues
@@ -76,6 +78,8 @@ flowchart LR
 
 ---
 
+<a id="capabilities"></a>
+
 ## ✨ Capabilities
 
 - **Bucket provisioning**: creates one bucket, many buckets, or CSV-driven batches
@@ -88,6 +92,8 @@ flowchart LR
 - **Validated releases**: publishes stable builds after release-candidate validation
 
 ---
+
+<a id="quick-start"></a>
 
 ## 🚀 Quick Start
 
@@ -212,6 +218,8 @@ s3ctl \
 
 ---
 
+<a id="distribution"></a>
+
 ## 📦 Distribution
 
 Published artifacts cover the supported installation paths:
@@ -286,6 +294,8 @@ sudo apt update && sudo apt install s3ctl
 
 ---
 
+<a id="website-preview"></a>
+
 ## 🖥️ Website Preview
 
 Render the release hub locally with real browser screenshots:
@@ -302,6 +312,8 @@ The website is built with Vite and the local preview flow falls back to
 `website/preview-metadata.json` when generated release metadata is not present yet.
 
 ---
+
+<a id="batch-provisioning"></a>
 
 ## 🗃️ Batch Provisioning
 
@@ -330,6 +342,8 @@ logs-archive,true,bucket-readonly,false
 ```
 
 ---
+
+<a id="configuration"></a>
 
 ## ⚙️ Configuration
 
@@ -453,6 +467,8 @@ install -m 600 ./examples/user-config.json "${XDG_CONFIG_HOME:-$HOME/.config}/s3
 
 ---
 
+<a id="built-in-templates"></a>
+
 ## 🧩 Built-In Templates
 
 Bucket policy templates:
@@ -478,6 +494,8 @@ users should be created under an IAM path.
 
 ---
 
+<a id="iam-notes"></a>
+
 ## 🔑 IAM Notes
 
 Scoped credential provisioning uses the IAM API in addition to the S3 API. The principal running `s3ctl` therefore needs permission to:
@@ -491,6 +509,8 @@ AWS IAM is the default target. When you need an IAM-compatible alternative, use
 `--iam-endpoint` or `iam_endpoint` in JSON config.
 
 ---
+
+<a id="deleting-buckets"></a>
 
 ## 🧹 Deleting Buckets
 
@@ -533,6 +553,8 @@ Use `--timeout` or `"timeout": "30m"` for large buckets or slower
 object-storage endpoints. The default timeout is `10m`.
 
 ---
+
+<a id="ovhcloud-notes"></a>
 
 ## ☁️ OVHcloud Notes
 
@@ -789,6 +811,8 @@ use `POST /me/api/oauth2/client` instead.
 
 ---
 
+<a id="container"></a>
+
 ## 🐳 Container
 
 Build locally:
@@ -816,6 +840,8 @@ docker run --rm \
 ```
 
 ---
+
+<a id="development"></a>
 
 ## 🛠️ Development
 
@@ -860,6 +886,8 @@ metadata fallback, and production build stay aligned.
 The Linux binaries are built with `CGO_ENABLED=0`, so releases are architecture-specific rather than distro-specific and should run across most mainstream distributions for the same CPU family.
 
 ---
+
+<a id="release-process"></a>
 
 ## 🚢 Release Process
 
