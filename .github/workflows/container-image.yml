@@ -78,7 +78,11 @@ jobs:
         run: |
           docker run --rm s3ctl:test --help | tee /tmp/s3ctl-help.txt
           grep -F 'Usage:' /tmp/s3ctl-help.txt
-          grep -F 'Built-in scoped credential policy templates:' /tmp/s3ctl-help.txt
+          grep -F 'Common workflows:' /tmp/s3ctl-help.txt
+          grep -F -- '--help-full' /tmp/s3ctl-help.txt
+
+          docker run --rm s3ctl:test --help-full | tee /tmp/s3ctl-help-full.txt
+          grep -F 'Built-in scoped credential policy templates:' /tmp/s3ctl-help-full.txt
 
           docker run --rm s3ctl:test --version | tee /tmp/s3ctl-version.txt
           grep -F 'Version:' /tmp/s3ctl-version.txt
