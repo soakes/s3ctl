@@ -279,9 +279,9 @@ function renderAssetList(release) {
   }
 
   const assets = sortedAssets(release?.assets || []);
-  count.textContent = assets.length > 0 ? `${assets.length} published assets` : "No published assets yet";
 
   if (assets.length === 0) {
+    count.textContent = "No published assets yet";
     container.innerHTML = '<div class="asset-empty">Publish a stable release to populate download links and package metadata.</div>';
     return;
   }
@@ -551,18 +551,42 @@ function activeAssetFilter() {
   return document.querySelector(".asset-filter.is-active")?.dataset.filter || "all";
 }
 
+function assetCountLabel(filterType, visibleCount, totalCount) {
+  const labelByFilter = {
+    all: ["published asset", "published assets"],
+    archive: ["release archive", "release archives"],
+    checksum: ["checksum file", "checksum files"],
+    deb: ["Debian package", "Debian packages"],
+  };
+  const count = filterType === "all" ? totalCount : visibleCount;
+  const [singular, plural] = labelByFilter[filterType] || labelByFilter.all;
+
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
 function applyAssetFilter(filterType = activeAssetFilter()) {
   const kindByFilter = {
     archive: "Release archive",
     checksum: "Checksums",
     deb: "Debian package",
   };
+  const selectedFilter = filterType === "all" || kindByFilter[filterType] ? filterType : "all";
+  const rows = [...document.querySelectorAll(".asset-row")];
+  let visibleCount = 0;
 
-  document.querySelectorAll(".asset-row").forEach((row) => {
-    const expectedKind = kindByFilter[filterType];
-    const show = filterType === "all" || row.dataset.kind === expectedKind;
+  rows.forEach((row) => {
+    const expectedKind = kindByFilter[selectedFilter];
+    const show = selectedFilter === "all" || row.dataset.kind === expectedKind;
+    if (show) {
+      visibleCount += 1;
+    }
     row.hidden = !show;
   });
+
+  const count = document.getElementById("asset-count");
+  if (count && rows.length > 0) {
+    count.textContent = assetCountLabel(selectedFilter, visibleCount, rows.length);
+  }
 }
 
 document.addEventListener("DOMContentLoaded", () => {
