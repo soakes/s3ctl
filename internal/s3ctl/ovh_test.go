@@ -195,6 +195,9 @@ func TestProvisionWithOVHCreatesUserCredentialsContainerAndPolicy(t *testing.T) 
 	if containerBody.Name != "app-data" || containerBody.OwnerID != 1234 {
 		t.Fatalf("unexpected container body: %#v", containerBody)
 	}
+	if len(containerBody.Tags) != 0 {
+		t.Fatalf("expected no default OVH container tags, got %#v", containerBody.Tags)
+	}
 	if containerBody.Versioning == nil || containerBody.Versioning.Status != "enabled" {
 		t.Fatalf("expected enabled OVH versioning, got %#v", containerBody.Versioning)
 	}
@@ -208,6 +211,39 @@ func TestProvisionWithOVHCreatesUserCredentialsContainerAndPolicy(t *testing.T) 
 	}
 	if policyBody.RoleName != defaultOVHStoragePolicyRole {
 		t.Fatalf("unexpected OVH policy body: %#v", policyBody)
+	}
+}
+
+func TestProvisionWithOVHAppliesConfiguredContainerTags(t *testing.T) {
+	client := &mockOVHClient{}
+	withMockOVHClient(t, client)
+
+	_, err := provision(context.Background(), settings{
+		Provider:             providerOVH,
+		Buckets:              []string{"app-data"},
+		Region:               "GRA",
+		OVHServiceName:       "project123",
+		OVHUserRole:          defaultOVHUserRole,
+		OVHStoragePolicyRole: defaultOVHStoragePolicyRole,
+		OVHTags: map[string]string{
+			"environment": "prod",
+			"owner":       "storage",
+		},
+	})
+	if err != nil {
+		t.Fatalf("provision returned error: %v", err)
+	}
+
+	containerBody, ok := client.calls[2].Body.(ovhStorageContainerCreation)
+	if !ok {
+		t.Fatalf("unexpected container body type: %#v", client.calls[2].Body)
+	}
+	wantTags := map[string]string{
+		"environment": "prod",
+		"owner":       "storage",
+	}
+	if !reflect.DeepEqual(containerBody.Tags, wantTags) {
+		t.Fatalf("unexpected OVH tags:\nwant %#v\ngot  %#v", wantTags, containerBody.Tags)
 	}
 }
 
@@ -869,7 +905,7 @@ func TestValidateOVHSettingsRequiresServiceNameAndOVHRegion(t *testing.T) {
 	}
 }
 
-func TestResolveSettingsReadsOVHCredentialsFromConfigAndEnv(t *testing.T) {
+func TestResolveSettingsReadsOVHCredentialsFromConfig(t *testing.T) {
 	tempDir := t.TempDir()
 	configPath := filepath.Join(tempDir, "ovh.json")
 	if err := os.WriteFile(
@@ -890,10 +926,7 @@ func TestResolveSettingsReadsOVHCredentialsFromConfigAndEnv(t *testing.T) {
 
 	cfg, _, err := resolveSettings(
 		[]string{"--config", configPath},
-		isolatedEnv(t, map[string]string{
-			"S3CTL_OVH_APPLICATION_SECRET": "env-app-secret",
-			"OVH_CONSUMER_KEY":             "env-consumer-key",
-		}),
+		isolatedEnv(t, nil),
 	)
 	if err != nil {
 		t.Fatalf("resolveSettings returned error: %v", err)
@@ -901,15 +934,15 @@ func TestResolveSettingsReadsOVHCredentialsFromConfigAndEnv(t *testing.T) {
 	if cfg.OVHApplicationKey != "config-app-key" {
 		t.Fatalf("expected OVH application key from config, got %q", cfg.OVHApplicationKey)
 	}
-	if cfg.OVHApplicationSecret != "env-app-secret" {
-		t.Fatalf("expected OVH application secret from env, got %q", cfg.OVHApplicationSecret)
+	if cfg.OVHApplicationSecret != "config-app-secret" {
+		t.Fatalf("expected OVH application secret from config, got %q", cfg.OVHApplicationSecret)
 	}
-	if cfg.OVHConsumerKey != "env-consumer-key" {
-		t.Fatalf("expected OVH consumer key from env alias, got %q", cfg.OVHConsumerKey)
+	if cfg.OVHConsumerKey != "config-consumer-key" {
+		t.Fatalf("expected OVH consumer key from config, got %q", cfg.OVHConsumerKey)
 	}
 }
 
-func TestResolveSettingsReadsModernOVHAuthFromConfigAndEnv(t *testing.T) {
+func TestResolveSettingsReadsModernOVHAuthFromConfig(t *testing.T) {
 	tempDir := t.TempDir()
 	configPath := filepath.Join(tempDir, "ovh.json")
 	if err := os.WriteFile(
@@ -920,6 +953,7 @@ func TestResolveSettingsReadsModernOVHAuthFromConfigAndEnv(t *testing.T) {
 			"region": "GRA",
 			"ovh_service_name": "project123",
 			"ovh_client_id": "config-client-id",
+			"ovh_client_secret": "config-client-secret",
 			"ovh_encrypt_data": true,
 			"ovh_rotate_credentials": true
 		}`),
@@ -930,9 +964,7 @@ func TestResolveSettingsReadsModernOVHAuthFromConfigAndEnv(t *testing.T) {
 
 	cfg, _, err := resolveSettings(
 		[]string{"--config", configPath},
-		isolatedEnv(t, map[string]string{
-			"S3CTL_OVH_CLIENT_SECRET": "env-client-secret",
-		}),
+		isolatedEnv(t, nil),
 	)
 	if err != nil {
 		t.Fatalf("resolveSettings returned error: %v", err)
@@ -940,8 +972,8 @@ func TestResolveSettingsReadsModernOVHAuthFromConfigAndEnv(t *testing.T) {
 	if cfg.OVHClientID != "config-client-id" {
 		t.Fatalf("expected OVH client id from config, got %q", cfg.OVHClientID)
 	}
-	if cfg.OVHClientSecret != "env-client-secret" {
-		t.Fatalf("expected OVH client secret from env, got %q", cfg.OVHClientSecret)
+	if cfg.OVHClientSecret != "config-client-secret" {
+		t.Fatalf("expected OVH client secret from config, got %q", cfg.OVHClientSecret)
 	}
 	if !cfg.OVHEncryptData {
 		t.Fatal("expected OVH encryption from config to be true")

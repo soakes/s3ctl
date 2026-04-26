@@ -77,7 +77,7 @@ type ovhAddContainerPolicy struct {
 
 func validateOVHSettings(cfg settings) error {
 	if strings.TrimSpace(cfg.OVHServiceName) == "" {
-		return errors.New("OVH provider requires --ovh-service-name, config ovh_service_name, or S3CTL_OVH_SERVICE_NAME")
+		return errors.New("OVH provider requires --ovh-service-name or config ovh_service_name")
 	}
 	if strings.TrimSpace(cfg.Region) == "" || strings.TrimSpace(cfg.Region) == defaultRegion {
 		return errors.New("OVH provider requires --region to be an OVH Public Cloud region such as GRA, BHS, SBG, UK, or EU-WEST-PAR")
@@ -689,9 +689,9 @@ func createOVHContainer(ctx context.Context, client ovhAPI, cfg settings, target
 	body := ovhStorageContainerCreation{
 		Name:    target.Bucket,
 		OwnerID: ownerID,
-		Tags: map[string]string{
-			"managed-by": "s3ctl",
-		},
+	}
+	if len(cfg.OVHTags) > 0 {
+		body.Tags = cloneStringMap(cfg.OVHTags)
 	}
 	if target.EnableVersioning {
 		body.Versioning = &ovhStorageVersioningObject{Status: "enabled"}

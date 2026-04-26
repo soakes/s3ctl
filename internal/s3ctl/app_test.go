@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -61,7 +62,7 @@ func TestBuildCredentialPolicyReadWrite(t *testing.T) {
 	}
 }
 
-func TestResolveSettingsReadsConfigAndEnv(t *testing.T) {
+func TestResolveSettingsReadsConfig(t *testing.T) {
 	tempDir := t.TempDir()
 	configPath := filepath.Join(tempDir, "s3ctl.json")
 	if err := os.WriteFile(
@@ -74,9 +75,7 @@ func TestResolveSettingsReadsConfigAndEnv(t *testing.T) {
 
 	cfg, parsed, err := resolveSettings(
 		[]string{"--config", configPath},
-		isolatedEnv(t, map[string]string{
-			"S3CTL_BUCKET_NAME": "env-bucket",
-		}),
+		isolatedEnv(t, nil),
 	)
 	if err != nil {
 		t.Fatalf("resolveSettings returned error: %v", err)
@@ -84,14 +83,98 @@ func TestResolveSettingsReadsConfigAndEnv(t *testing.T) {
 	if parsed.showVersion || parsed.showHelp {
 		t.Fatal("expected neither help nor version output")
 	}
-	if len(cfg.Buckets) != 1 || cfg.Buckets[0] != "env-bucket" {
-		t.Fatalf("expected env bucket to win, got %#v", cfg.Buckets)
+	if len(cfg.Buckets) != 1 || cfg.Buckets[0] != "config-bucket" {
+		t.Fatalf("expected config bucket, got %#v", cfg.Buckets)
 	}
 	if cfg.Endpoint != "https://config.example" {
 		t.Fatalf("expected config endpoint, got %q", cfg.Endpoint)
 	}
 	if !cfg.CreateScopedCredentials {
 		t.Fatal("expected create_scoped_credentials from config to be true")
+	}
+}
+
+func TestResolveSettingsIgnoresCustomS3CTLEnvironment(t *testing.T) {
+	cfg, _, err := resolveSettings(
+		nil,
+		isolatedEnv(t, map[string]string{
+			"S3CTL_BUCKET_NAME":   "legacy-bucket",
+			"S3CTL_OUTPUT_FORMAT": "json",
+		}),
+	)
+	if err == nil {
+		t.Fatal("expected missing bucket error when only custom legacy environment values are set")
+	}
+	if !strings.Contains(err.Error(), "at least one --bucket") {
+		t.Fatalf("unexpected validation error: %v", err)
+	}
+	if cfg.Output == "json" {
+		t.Fatalf("expected custom output environment value to be ignored, got %#v", cfg)
+	}
+	if output := detectOutputFormat(nil, isolatedEnv(t, map[string]string{"S3CTL_OUTPUT_FORMAT": "json"})); output != defaultOutputFormat {
+		t.Fatalf("expected custom output environment value to be ignored, got %q", output)
+	}
+}
+
+func TestResolveSettingsSupportsOVHTags(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "ovh.json")
+	if err := os.WriteFile(
+		configPath,
+		[]byte(`{"provider":"ovh","bucket":"config-bucket","region":"UK","ovh_service_name":"project123","ovh_tags":{"team":"storage"}}`),
+		0o644,
+	); err != nil {
+		t.Fatalf("os.WriteFile returned error: %v", err)
+	}
+
+	cfg, _, err := resolveSettings(
+		[]string{"--config", configPath},
+		isolatedEnv(t, nil),
+	)
+	if err != nil {
+		t.Fatalf("resolveSettings returned error: %v", err)
+	}
+	if !reflect.DeepEqual(cfg.OVHTags, map[string]string{"team": "storage"}) {
+		t.Fatalf("expected config OVH tags, got %#v", cfg.OVHTags)
+	}
+
+	cfg, _, err = resolveSettings(
+		[]string{
+			"--config", configPath,
+			"--ovh-tag", "environment=prod",
+			"--ovh-tag", "owner=platform",
+		},
+		isolatedEnv(t, nil),
+	)
+	if err != nil {
+		t.Fatalf("resolveSettings returned error: %v", err)
+	}
+
+	wantTags := map[string]string{
+		"environment": "prod",
+		"owner":       "platform",
+	}
+	if !reflect.DeepEqual(cfg.OVHTags, wantTags) {
+		t.Fatalf("expected CLI OVH tags to win, got %#v", cfg.OVHTags)
+	}
+}
+
+func TestResolveSettingsRejectsInvalidOVHTag(t *testing.T) {
+	_, _, err := resolveSettings(
+		[]string{
+			"--provider", "ovh",
+			"--bucket", "app-data",
+			"--region", "UK",
+			"--ovh-service-name", "project123",
+			"--ovh-tag", "missing-equals",
+		},
+		isolatedEnv(t, nil),
+	)
+	if err == nil {
+		t.Fatal("expected invalid OVH tag to fail")
+	}
+	if !strings.Contains(err.Error(), "--ovh-tag must be key=value") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
@@ -124,28 +207,6 @@ func TestLoadConfigResolvesRelativePaths(t *testing.T) {
 	}
 	if src.BatchFile == nil || *src.BatchFile != batchPath {
 		t.Fatalf("expected resolved batch path %q, got %#v", batchPath, src.BatchFile)
-	}
-}
-
-func TestResolveSettingsSupportsLegacyEnvAliases(t *testing.T) {
-	cfg, parsed, err := resolveSettings(
-		[]string{},
-		isolatedEnv(t, map[string]string{
-			"S3CTL_BUCKET":   "legacy-bucket",
-			"S3CTL_ENDPOINT": "https://legacy.example.com",
-		}),
-	)
-	if err != nil {
-		t.Fatalf("resolveSettings returned error: %v", err)
-	}
-	if parsed.showVersion || parsed.showHelp {
-		t.Fatal("expected neither help nor version output")
-	}
-	if len(cfg.Buckets) != 1 || cfg.Buckets[0] != "legacy-bucket" {
-		t.Fatalf("expected legacy bucket alias to be supported, got %#v", cfg.Buckets)
-	}
-	if cfg.Endpoint != "https://legacy.example.com" {
-		t.Fatalf("expected legacy endpoint alias to be supported, got %q", cfg.Endpoint)
 	}
 }
 
@@ -283,25 +344,27 @@ func TestValidateSettingsRejectsStandaloneSessionToken(t *testing.T) {
 	}
 }
 
-func TestResolveSettingsReadsTimeoutFromEnvAndFlag(t *testing.T) {
+func TestResolveSettingsReadsTimeoutFromConfigAndFlag(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "s3ctl.json")
+	if err := os.WriteFile(configPath, []byte(`{"bucket":"app-data","timeout":"10m"}`), 0o644); err != nil {
+		t.Fatalf("os.WriteFile returned error: %v", err)
+	}
+
 	cfg, _, err := resolveSettings(
-		[]string{"--bucket", "app-data"},
-		isolatedEnv(t, map[string]string{
-			"S3CTL_TIMEOUT": "10m",
-		}),
+		[]string{"--config", configPath},
+		isolatedEnv(t, nil),
 	)
 	if err != nil {
 		t.Fatalf("resolveSettings returned error: %v", err)
 	}
 	if cfg.ParsedTimeout != 10*time.Minute {
-		t.Fatalf("expected env timeout, got %s", cfg.ParsedTimeout)
+		t.Fatalf("expected config timeout, got %s", cfg.ParsedTimeout)
 	}
 
 	cfg, _, err = resolveSettings(
-		[]string{"--bucket", "app-data", "--timeout", "2m"},
-		isolatedEnv(t, map[string]string{
-			"S3CTL_TIMEOUT": "10m",
-		}),
+		[]string{"--config", configPath, "--timeout", "2m"},
+		isolatedEnv(t, nil),
 	)
 	if err != nil {
 		t.Fatalf("resolveSettings returned error: %v", err)
@@ -342,12 +405,48 @@ func TestMainWithEnvShowsProfessionalHelpOutput(t *testing.T) {
 	}
 	for _, fragment := range []string{
 		"Examples:",
-		"Primary environment variables:",
+		"Standard AWS SDK credential and profile discovery",
 		"Built-in scoped credential policy templates:",
 		"Batch CSV columns:",
 	} {
 		if !strings.Contains(stdout.String(), fragment) {
 			t.Fatalf("expected help output to contain %q, got %q", fragment, stdout.String())
+		}
+	}
+}
+
+func TestMainWithEnvShowsContextualBucketHelp(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := MainWithEnv([]string{"--bucket", "app-data", "--help"}, map[string]string{}, &stdout, &stderr)
+
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d", exitCode)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected stderr to be empty, got %q", stderr.String())
+	}
+	for _, fragment := range []string{
+		"bucket workflow help",
+		"--bucket stringArray",
+		"--delete",
+		"--force",
+		"--ovh-rotate-credentials",
+		"Run s3ctl --help for every provider",
+	} {
+		if !strings.Contains(stdout.String(), fragment) {
+			t.Fatalf("expected bucket help to contain %q, got %q", fragment, stdout.String())
+		}
+	}
+	for _, fragment := range []string{
+		"S3CTL_",
+		"--ovh-client-id",
+		"--access-key",
+		"--iam-endpoint",
+	} {
+		if strings.Contains(stdout.String(), fragment) {
+			t.Fatalf("expected bucket help to omit %q, got %q", fragment, stdout.String())
 		}
 	}
 }

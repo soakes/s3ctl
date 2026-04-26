@@ -108,7 +108,7 @@ jobs:
           grep -F 'Examples:' /tmp/s3ctl-no-args.txt
 
           ./dist/s3ctl --help | tee /tmp/s3ctl-help.txt
-          grep -F 'Primary environment variables:' /tmp/s3ctl-help.txt
+          grep -F 'Configuration precedence:' /tmp/s3ctl-help.txt
           grep -F 'Built-in scoped credential policy templates:' /tmp/s3ctl-help.txt
 
           ./dist/s3ctl --config examples/s3ctl.json --dry-run --output json > /tmp/s3ctl-config.json
@@ -124,12 +124,13 @@ jobs:
           grep -F '"bucket_name": "logs-archive"' /tmp/s3ctl-batch.json
           grep -F '"policy_template": "bucket-readonly"' /tmp/s3ctl-batch.json
 
-          S3CTL_BUCKET_NAME=env-bucket \
-          S3CTL_ENDPOINT_URL=https://objects.example.com \
-          S3CTL_CREATE_SCOPED_CREDENTIALS=true \
-          ./dist/s3ctl --dry-run > /tmp/s3ctl-env.txt
-          grep -F 'Bucket: env-bucket' /tmp/s3ctl-env.txt
-          grep -F 'IAM user: env-bucket' /tmp/s3ctl-env.txt
+          ./dist/s3ctl \
+            --bucket flag-bucket \
+            --endpoint https://objects.example.com \
+            --create-scoped-credentials \
+            --dry-run > /tmp/s3ctl-flags.txt
+          grep -F 'Bucket: flag-bucket' /tmp/s3ctl-flags.txt
+          grep -F 'IAM user: flag-bucket' /tmp/s3ctl-flags.txt
 
           mkdir -p /tmp/s3ctl-config-home/s3ctl
           cat > /tmp/s3ctl-config-home/s3ctl/config.json <<'EOF'

@@ -57,129 +57,48 @@ var bucketPolicyTemplates = map[string]string{
 	"deny-insecure-transport": "Deny requests that do not use TLS",
 }
 
-var envAliases = struct {
-	ConfigFile              []string
-	BucketName              []string
-	BucketNames             []string
-	BatchFile               []string
-	EndpointURL             []string
-	Region                  []string
-	Profile                 []string
-	AccessKeyID             []string
-	SecretAccessKey         []string
-	SessionToken            []string
-	InsecureSkipTLSVerify   []string
-	EnableVersioning        []string
-	BucketPolicyFile        []string
-	BucketPolicyTemplate    []string
-	CreateScopedCredentials []string
-	Provider                []string
-	IAMEndpointURL          []string
-	IAMUserName             []string
-	IAMUserPrefix           []string
-	IAMPath                 []string
-	CredentialPolicyTmpl    []string
-	OVHAPIEndpoint          []string
-	OVHAccessToken          []string
-	OVHApplicationKey       []string
-	OVHApplicationSecret    []string
-	OVHConsumerKey          []string
-	OVHClientID             []string
-	OVHClientSecret         []string
-	OVHS3Endpoint           []string
-	OVHServiceName          []string
-	OVHUserRole             []string
-	OVHStoragePolicyRole    []string
-	OVHEncryptData          []string
-	OVHRotateCredentials    []string
-	DeleteBucket            []string
-	Force                   []string
-	Timeout                 []string
-	OutputFormat            []string
-	DryRun                  []string
-}{
-	ConfigFile:              []string{"S3CTL_CONFIG_FILE", "S3CTL_CONFIG"},
-	BucketName:              []string{"S3CTL_BUCKET_NAME", "S3CTL_BUCKET"},
-	BucketNames:             []string{"S3CTL_BUCKET_NAMES"},
-	BatchFile:               []string{"S3CTL_BATCH_FILE"},
-	EndpointURL:             []string{"S3CTL_ENDPOINT_URL", "S3CTL_ENDPOINT", "AWS_ENDPOINT_URL", "S3_ENDPOINT"},
-	Region:                  []string{"S3CTL_REGION", "AWS_REGION", "AWS_DEFAULT_REGION"},
-	Profile:                 []string{"S3CTL_PROFILE", "AWS_PROFILE"},
-	AccessKeyID:             []string{"S3CTL_ACCESS_KEY_ID", "S3CTL_ACCESS_KEY", "AWS_ACCESS_KEY_ID"},
-	SecretAccessKey:         []string{"S3CTL_SECRET_ACCESS_KEY", "S3CTL_SECRET_KEY", "AWS_SECRET_ACCESS_KEY"},
-	SessionToken:            []string{"S3CTL_SESSION_TOKEN", "AWS_SESSION_TOKEN"},
-	InsecureSkipTLSVerify:   []string{"S3CTL_INSECURE_SKIP_TLS_VERIFY", "S3CTL_INSECURE"},
-	EnableVersioning:        []string{"S3CTL_ENABLE_VERSIONING"},
-	BucketPolicyFile:        []string{"S3CTL_BUCKET_POLICY_FILE"},
-	BucketPolicyTemplate:    []string{"S3CTL_BUCKET_POLICY_TEMPLATE"},
-	CreateScopedCredentials: []string{"S3CTL_CREATE_SCOPED_CREDENTIALS"},
-	Provider:                []string{"S3CTL_PROVIDER"},
-	IAMEndpointURL:          []string{"S3CTL_IAM_ENDPOINT_URL"},
-	IAMUserName:             []string{"S3CTL_IAM_USER_NAME"},
-	IAMUserPrefix:           []string{"S3CTL_IAM_USER_PREFIX"},
-	IAMPath:                 []string{"S3CTL_IAM_PATH"},
-	CredentialPolicyTmpl:    []string{"S3CTL_CREDENTIAL_POLICY_TEMPLATE"},
-	OVHAPIEndpoint:          []string{"S3CTL_OVH_API_ENDPOINT", "OVH_ENDPOINT"},
-	OVHAccessToken:          []string{"S3CTL_OVH_ACCESS_TOKEN", "OVH_ACCESS_TOKEN"},
-	OVHApplicationKey:       []string{"S3CTL_OVH_APPLICATION_KEY", "OVH_APPLICATION_KEY"},
-	OVHApplicationSecret:    []string{"S3CTL_OVH_APPLICATION_SECRET", "OVH_APPLICATION_SECRET"},
-	OVHConsumerKey:          []string{"S3CTL_OVH_CONSUMER_KEY", "OVH_CONSUMER_KEY"},
-	OVHClientID:             []string{"S3CTL_OVH_CLIENT_ID", "OVH_CLIENT_ID"},
-	OVHClientSecret:         []string{"S3CTL_OVH_CLIENT_SECRET", "OVH_CLIENT_SECRET"},
-	OVHS3Endpoint:           []string{"S3CTL_OVH_S3_ENDPOINT"},
-	OVHServiceName:          []string{"S3CTL_OVH_SERVICE_NAME", "S3CTL_OVH_PROJECT_ID", "OVH_CLOUD_PROJECT_ID"},
-	OVHUserRole:             []string{"S3CTL_OVH_USER_ROLE"},
-	OVHStoragePolicyRole:    []string{"S3CTL_OVH_STORAGE_POLICY_ROLE"},
-	OVHEncryptData:          []string{"S3CTL_OVH_ENCRYPT_DATA"},
-	OVHRotateCredentials:    []string{"S3CTL_OVH_ROTATE_CREDENTIALS"},
-	DeleteBucket:            []string{"S3CTL_DELETE_BUCKET", "S3CTL_DELETE"},
-	Force:                   []string{"S3CTL_FORCE"},
-	Timeout:                 []string{"S3CTL_TIMEOUT", "S3CTL_PROVISION_TIMEOUT"},
-	OutputFormat:            []string{"S3CTL_OUTPUT_FORMAT", "S3CTL_OUTPUT"},
-	DryRun:                  []string{"S3CTL_DRY_RUN"},
-}
-
 type settings struct {
-	ConfigPath               string   `json:"-"`
-	Provider                 string   `json:"provider"`
-	Bucket                   string   `json:"bucket"`
-	Buckets                  []string `json:"buckets"`
-	BatchFile                string   `json:"batch_file"`
-	Endpoint                 string   `json:"endpoint"`
-	Region                   string   `json:"region"`
-	Profile                  string   `json:"profile"`
-	AccessKey                string   `json:"access_key"`
-	SecretKey                string   `json:"secret_key"`
-	SessionToken             string   `json:"session_token"`
-	Insecure                 bool     `json:"insecure"`
-	EnableVersioning         bool     `json:"enable_versioning"`
-	BucketPolicyFile         string   `json:"bucket_policy_file"`
-	BucketPolicyTemplate     string   `json:"bucket_policy_template"`
-	CreateScopedCredentials  bool     `json:"create_scoped_credentials"`
-	IAMEndpoint              string   `json:"iam_endpoint"`
-	IAMUserName              string   `json:"iam_user_name"`
-	IAMUserPrefix            string   `json:"iam_user_prefix"`
-	IAMPath                  string   `json:"iam_path"`
-	CredentialPolicyTemplate string   `json:"credential_policy_template"`
-	OVHAPIEndpoint           string   `json:"ovh_api_endpoint"`
-	OVHAccessToken           string   `json:"ovh_access_token"`
-	OVHApplicationKey        string   `json:"ovh_application_key"`
-	OVHApplicationSecret     string   `json:"ovh_application_secret"`
-	OVHConsumerKey           string   `json:"ovh_consumer_key"`
-	OVHClientID              string   `json:"ovh_client_id"`
-	OVHClientSecret          string   `json:"ovh_client_secret"`
-	OVHS3Endpoint            string   `json:"ovh_s3_endpoint"`
-	OVHServiceName           string   `json:"ovh_service_name"`
-	OVHUserRole              string   `json:"ovh_user_role"`
-	OVHStoragePolicyRole     string   `json:"ovh_storage_policy_role"`
-	OVHEncryptData           bool     `json:"ovh_encrypt_data"`
-	OVHEncryptDataSet        bool     `json:"-"`
-	OVHRotateCredentials     bool     `json:"ovh_rotate_credentials"`
-	DeleteBucket             bool     `json:"delete_bucket"`
-	Force                    bool     `json:"force"`
-	Timeout                  string   `json:"timeout"`
-	Output                   string   `json:"output"`
-	DryRun                   bool     `json:"dry_run"`
+	ConfigPath               string            `json:"-"`
+	Provider                 string            `json:"provider"`
+	Bucket                   string            `json:"bucket"`
+	Buckets                  []string          `json:"buckets"`
+	BatchFile                string            `json:"batch_file"`
+	Endpoint                 string            `json:"endpoint"`
+	Region                   string            `json:"region"`
+	Profile                  string            `json:"profile"`
+	AccessKey                string            `json:"access_key"`
+	SecretKey                string            `json:"secret_key"`
+	SessionToken             string            `json:"session_token"`
+	Insecure                 bool              `json:"insecure"`
+	EnableVersioning         bool              `json:"enable_versioning"`
+	BucketPolicyFile         string            `json:"bucket_policy_file"`
+	BucketPolicyTemplate     string            `json:"bucket_policy_template"`
+	CreateScopedCredentials  bool              `json:"create_scoped_credentials"`
+	IAMEndpoint              string            `json:"iam_endpoint"`
+	IAMUserName              string            `json:"iam_user_name"`
+	IAMUserPrefix            string            `json:"iam_user_prefix"`
+	IAMPath                  string            `json:"iam_path"`
+	CredentialPolicyTemplate string            `json:"credential_policy_template"`
+	OVHAPIEndpoint           string            `json:"ovh_api_endpoint"`
+	OVHAccessToken           string            `json:"ovh_access_token"`
+	OVHApplicationKey        string            `json:"ovh_application_key"`
+	OVHApplicationSecret     string            `json:"ovh_application_secret"`
+	OVHConsumerKey           string            `json:"ovh_consumer_key"`
+	OVHClientID              string            `json:"ovh_client_id"`
+	OVHClientSecret          string            `json:"ovh_client_secret"`
+	OVHS3Endpoint            string            `json:"ovh_s3_endpoint"`
+	OVHServiceName           string            `json:"ovh_service_name"`
+	OVHUserRole              string            `json:"ovh_user_role"`
+	OVHStoragePolicyRole     string            `json:"ovh_storage_policy_role"`
+	OVHEncryptData           bool              `json:"ovh_encrypt_data"`
+	OVHEncryptDataSet        bool              `json:"-"`
+	OVHRotateCredentials     bool              `json:"ovh_rotate_credentials"`
+	OVHTags                  map[string]string `json:"ovh_tags"`
+	DeleteBucket             bool              `json:"delete_bucket"`
+	Force                    bool              `json:"force"`
+	Timeout                  string            `json:"timeout"`
+	Output                   string            `json:"output"`
+	DryRun                   bool              `json:"dry_run"`
 	ParsedTimeout            time.Duration
 }
 
@@ -216,6 +135,7 @@ type source struct {
 	OVHStoragePolicyRole     *string
 	OVHEncryptData           *bool
 	OVHRotateCredentials     *bool
+	OVHTags                  *map[string]string
 	DeleteBucket             *bool
 	Force                    *bool
 	Timeout                  *time.Duration
@@ -257,6 +177,7 @@ type cliFlags struct {
 	OVHStoragePolicyRole     string
 	OVHEncryptData           bool
 	OVHRotateCredentials     bool
+	OVHTags                  []string
 	DeleteBucket             bool
 	Force                    bool
 	Timeout                  string
@@ -383,7 +304,7 @@ func MainWithEnv(args []string, env map[string]string, stdout, stderr io.Writer)
 	cfg, parsed, err := resolveSettings(args, env)
 	if err != nil {
 		if errors.Is(err, pflag.ErrHelp) || parsed.showHelp {
-			if writeErr := writeUsage(stdout); writeErr != nil {
+			if writeErr := writeUsageForArgs(stdout, args); writeErr != nil {
 				return 1
 			}
 			return 0
@@ -404,7 +325,7 @@ func MainWithEnv(args []string, env map[string]string, stdout, stderr io.Writer)
 	}
 
 	if parsed.showHelp {
-		if err := writeUsage(stdout); err != nil {
+		if err := writeUsageForArgs(stdout, args); err != nil {
 			return 1
 		}
 		return 0
@@ -530,13 +451,8 @@ func resolveSettings(args []string, env map[string]string) (settings, parseResul
 		return settings{}, cliParsed, nil
 	}
 
-	envSource, err := loadEnv(env)
-	if err != nil {
-		return settings{}, parseResult{}, err
-	}
-
 	if cliParsed.showVersion {
-		return mergeSources(source{}, envSource, cliParsed.source), cliParsed, nil
+		return mergeSources(source{}, cliParsed.source), cliParsed, nil
 	}
 
 	configPath, err := resolveConfigPath(args, env)
@@ -549,7 +465,7 @@ func resolveSettings(args []string, env map[string]string) (settings, parseResul
 		return settings{}, parseResult{}, err
 	}
 
-	cfg := mergeSources(configSource, envSource, cliParsed.source)
+	cfg := mergeSources(configSource, cliParsed.source)
 	cfg.ConfigPath = configPath
 	if err := validateSettings(cfg); err != nil {
 		return cfg, cliParsed, err
@@ -566,6 +482,10 @@ func parseFlags(args []string) (parseResult, error) {
 		return parseResult{}, err
 	}
 	timeout, err := changedDuration(fs, "timeout", flags.Timeout)
+	if err != nil {
+		return parseResult{}, err
+	}
+	ovhTags, err := changedStringMap(fs, "ovh-tag", flags.OVHTags)
 	if err != nil {
 		return parseResult{}, err
 	}
@@ -604,6 +524,7 @@ func parseFlags(args []string) (parseResult, error) {
 			OVHStoragePolicyRole:     changedString(fs, "ovh-storage-policy-role", flags.OVHStoragePolicyRole),
 			OVHEncryptData:           changedBool(fs, "ovh-encrypt-data", flags.OVHEncryptData),
 			OVHRotateCredentials:     changedBool(fs, "ovh-rotate-credentials", flags.OVHRotateCredentials),
+			OVHTags:                  ovhTags,
 			DeleteBucket:             changedBool(fs, "delete", flags.DeleteBucket),
 			Force:                    changedBool(fs, "force", flags.Force),
 			Timeout:                  timeout,
@@ -653,6 +574,7 @@ func newFlagSet(flags *cliFlags) *pflag.FlagSet {
 	fs.StringVar(&flags.OVHStoragePolicyRole, "ovh-storage-policy-role", defaultOVHStoragePolicyRole, "OVHcloud container policy role: admin, deny, readOnly, or readWrite")
 	fs.BoolVar(&flags.OVHEncryptData, "ovh-encrypt-data", false, "Enable OVHcloud server-side encryption with OVH-managed keys")
 	fs.BoolVar(&flags.OVHRotateCredentials, "ovh-rotate-credentials", false, "Rotate existing OVHcloud S3 credentials for each bucket instead of creating containers")
+	fs.StringArrayVar(&flags.OVHTags, "ovh-tag", nil, "Tag to apply to OVHcloud containers as key=value; may be specified more than once")
 	fs.BoolVar(&flags.DeleteBucket, "delete", false, "Delete each bucket instead of creating buckets")
 	fs.BoolVar(&flags.Force, "force", false, "Allow delete operations to remove bucket contents before deleting buckets")
 	fs.StringVar(&flags.Timeout, "timeout", defaultProvisionTimeout.String(), "Overall operation timeout, for example 30s, 5m, or 1h")
@@ -667,6 +589,18 @@ func newFlagSet(flags *cliFlags) *pflag.FlagSet {
 func writeUsage(w io.Writer) error {
 	_, err := io.WriteString(w, usageText())
 	return err
+}
+
+func writeUsageForArgs(w io.Writer, args []string) error {
+	_, err := io.WriteString(w, usageTextForArgs(args))
+	return err
+}
+
+func usageTextForArgs(args []string) string {
+	if shouldShowBucketHelp(args) {
+		return bucketUsageText()
+	}
+	return usageText()
 }
 
 func usageText() string {
@@ -698,55 +632,12 @@ Flags:
 	builder.WriteString(`
 Configuration precedence:
   1. CLI flags
-  2. Environment variables
-  3. JSON config file
-  4. Built-in defaults
+  2. JSON config file
+  3. Built-in defaults
 
 Default user config file:
   $XDG_CONFIG_HOME/s3ctl/config.json
   $HOME/.config/s3ctl/config.json
-
-Primary environment variables:
-  S3CTL_CONFIG_FILE
-  S3CTL_BUCKET_NAME
-  S3CTL_BUCKET_NAMES
-  S3CTL_BATCH_FILE
-  S3CTL_ENDPOINT_URL
-  S3CTL_REGION
-  S3CTL_PROFILE
-  S3CTL_ACCESS_KEY_ID
-  S3CTL_SECRET_ACCESS_KEY
-  S3CTL_SESSION_TOKEN
-  S3CTL_INSECURE_SKIP_TLS_VERIFY
-  S3CTL_ENABLE_VERSIONING
-  S3CTL_BUCKET_POLICY_FILE
-  S3CTL_BUCKET_POLICY_TEMPLATE
-  S3CTL_CREATE_SCOPED_CREDENTIALS
-  S3CTL_PROVIDER
-  S3CTL_IAM_ENDPOINT_URL
-  S3CTL_IAM_USER_NAME
-  S3CTL_IAM_USER_PREFIX
-  S3CTL_IAM_PATH
-  S3CTL_CREDENTIAL_POLICY_TEMPLATE
-  S3CTL_OVH_API_ENDPOINT
-  S3CTL_OVH_ACCESS_TOKEN
-  S3CTL_OVH_APPLICATION_KEY
-  S3CTL_OVH_APPLICATION_SECRET
-  S3CTL_OVH_CONSUMER_KEY
-  S3CTL_OVH_CLIENT_ID
-  S3CTL_OVH_CLIENT_SECRET
-  S3CTL_OVH_S3_ENDPOINT
-  S3CTL_OVH_SERVICE_NAME
-  S3CTL_OVH_PROJECT_ID
-  S3CTL_OVH_USER_ROLE
-  S3CTL_OVH_STORAGE_POLICY_ROLE
-  S3CTL_OVH_ENCRYPT_DATA
-  S3CTL_OVH_ROTATE_CREDENTIALS
-  S3CTL_DELETE_BUCKET
-  S3CTL_FORCE
-  S3CTL_TIMEOUT
-  S3CTL_OUTPUT_FORMAT
-  S3CTL_DRY_RUN
 
 Built-in bucket policy templates:
 `)
@@ -776,9 +667,120 @@ Notes:
   Scoped credential provisioning for the s3 provider uses the IAM API. By default this targets AWS IAM.
   Use --iam-endpoint when you need a different IAM-compatible endpoint.
   Use --provider ovh to create OVHcloud Public Cloud users, S3 credentials, and containers through the OVHcloud API.
+  Standard AWS SDK credential and profile discovery is used when --profile or explicit access key values are not set.
+  Standard go-ovh client discovery, including ovh.conf, is used when explicit OVH auth flags or config values are not set.
 `)
 
 	return builder.String()
+}
+
+func bucketUsageText() string {
+	var builder strings.Builder
+
+	_, _ = fmt.Fprintf(&builder, `%s bucket workflow help.
+
+Usage:
+  %s --bucket NAME [bucket flags]
+  %s --batch-file PATH [bucket flags]
+
+Examples:
+  %s --bucket app-data --dry-run
+  %s --bucket app-data --delete
+  %s --bucket app-data --delete --force --timeout 30m
+  %s --provider ovh --bucket app-data --region UK --ovh-service-name PROJECT_ID
+  %s --provider ovh --bucket app-data --ovh-rotate-credentials --output json
+
+Bucket flags:
+`, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName)
+	builder.WriteString(flagUsagesForNames(bucketHelpFlagNames()))
+	builder.WriteString(`
+Run ` + binaryName + ` --help for every provider, auth, IAM, and configuration option.
+`)
+
+	return builder.String()
+}
+
+func bucketHelpFlagNames() []string {
+	return []string{
+		"config",
+		"provider",
+		"bucket",
+		"batch-file",
+		"endpoint",
+		"region",
+		"profile",
+		"enable-versioning",
+		"bucket-policy-file",
+		"bucket-policy-template",
+		"create-scoped-credentials",
+		"credential-policy-template",
+		"ovh-service-name",
+		"ovh-storage-policy-role",
+		"ovh-encrypt-data",
+		"ovh-rotate-credentials",
+		"ovh-tag",
+		"delete",
+		"force",
+		"timeout",
+		"output",
+		"dry-run",
+		"help",
+	}
+}
+
+func flagUsagesForNames(names []string) string {
+	flags := cliFlags{}
+	allFlags := newFlagSet(&flags)
+	filteredFlags := pflag.NewFlagSet(binaryName, pflag.ContinueOnError)
+	filteredFlags.SetOutput(io.Discard)
+	filteredFlags.SortFlags = false
+
+	for _, name := range names {
+		flag := allFlags.Lookup(name)
+		if flag == nil {
+			continue
+		}
+		filteredFlags.AddFlag(flag)
+	}
+
+	return filteredFlags.FlagUsagesWrapped(100)
+}
+
+func shouldShowBucketHelp(args []string) bool {
+	for _, flag := range []struct {
+		name      string
+		shorthand string
+	}{
+		{name: "bucket", shorthand: "b"},
+		{name: "batch-file"},
+		{name: "delete"},
+		{name: "force"},
+		{name: "enable-versioning"},
+		{name: "bucket-policy-file"},
+		{name: "bucket-policy-template"},
+		{name: "create-scoped-credentials"},
+		{name: "ovh-rotate-credentials"},
+		{name: "ovh-tag"},
+	} {
+		if argHasFlag(args, flag.name, flag.shorthand) {
+			return true
+		}
+	}
+	return false
+}
+
+func argHasFlag(args []string, name, shorthand string) bool {
+	longFlag := "--" + name
+	shortFlag := "-" + shorthand
+	for _, arg := range args {
+		switch {
+		case arg == longFlag || strings.HasPrefix(arg, longFlag+"="):
+			return true
+		case shorthand != "" && (arg == shortFlag || strings.HasPrefix(arg, shortFlag+"=") || strings.HasPrefix(arg, shortFlag) && !strings.HasPrefix(arg, "--")):
+			return true
+		}
+	}
+	return false
 }
 
 func loadConfig(path string) (source, error) {
@@ -855,104 +857,12 @@ func loadConfig(path string) (source, error) {
 		OVHStoragePolicyRole:     stringPtrIfField(data, "ovh_storage_policy_role", cfg.OVHStoragePolicyRole),
 		OVHEncryptData:           boolPtrIfSet(data, "ovh_encrypt_data", cfg.OVHEncryptData),
 		OVHRotateCredentials:     boolPtrIfSet(data, "ovh_rotate_credentials", cfg.OVHRotateCredentials),
+		OVHTags:                  stringMapPtrIfField(data, "ovh_tags", cfg.OVHTags),
 		DeleteBucket:             deleteBucket,
 		Force:                    boolPtrIfSet(data, "force", cfg.Force),
 		Timeout:                  timeout,
 		Output:                   stringPtrIfField(data, "output", cfg.Output),
 		DryRun:                   boolPtrIfSet(data, "dry_run", cfg.DryRun),
-	}, nil
-}
-
-func loadEnv(env map[string]string) (source, error) {
-	insecure, err := envBoolAliases(env, envAliases.InsecureSkipTLSVerify...)
-	if err != nil {
-		return source{}, err
-	}
-
-	enableVersioning, err := envBoolAliases(env, envAliases.EnableVersioning...)
-	if err != nil {
-		return source{}, err
-	}
-
-	createScopedCredentials, err := envBoolAliases(env, envAliases.CreateScopedCredentials...)
-	if err != nil {
-		return source{}, err
-	}
-
-	ovhEncryptData, err := envBoolAliases(env, envAliases.OVHEncryptData...)
-	if err != nil {
-		return source{}, err
-	}
-
-	ovhRotateCredentials, err := envBoolAliases(env, envAliases.OVHRotateCredentials...)
-	if err != nil {
-		return source{}, err
-	}
-
-	deleteBucket, err := envBoolAliases(env, envAliases.DeleteBucket...)
-	if err != nil {
-		return source{}, err
-	}
-
-	force, err := envBoolAliases(env, envAliases.Force...)
-	if err != nil {
-		return source{}, err
-	}
-
-	timeout, err := envDurationAliases(env, envAliases.Timeout...)
-	if err != nil {
-		return source{}, err
-	}
-
-	dryRun, err := envBoolAliases(env, envAliases.DryRun...)
-	if err != nil {
-		return source{}, err
-	}
-
-	buckets := make([]string, 0, 4)
-	if singleBucket := envValue(env, envAliases.BucketName...); singleBucket != "" {
-		buckets = append(buckets, singleBucket)
-	}
-	buckets = append(buckets, parseCommaSeparatedValues(envValue(env, envAliases.BucketNames...))...)
-
-	return source{
-		Provider:                 strPtrIfSet(envValue(env, envAliases.Provider...)),
-		Buckets:                  stringSlicePtrIfValue(dedupeStringsPreserveOrder(buckets)),
-		BatchFile:                strPtrIfSet(envValue(env, envAliases.BatchFile...)),
-		Endpoint:                 strPtrIfSet(envValue(env, envAliases.EndpointURL...)),
-		Region:                   strPtrIfSet(envValue(env, envAliases.Region...)),
-		Profile:                  strPtrIfSet(envValue(env, envAliases.Profile...)),
-		AccessKey:                strPtrIfSet(envValue(env, envAliases.AccessKeyID...)),
-		SecretKey:                strPtrIfSet(envValue(env, envAliases.SecretAccessKey...)),
-		SessionToken:             strPtrIfSet(envValue(env, envAliases.SessionToken...)),
-		Insecure:                 insecure,
-		EnableVersioning:         enableVersioning,
-		BucketPolicyFile:         strPtrIfSet(envValue(env, envAliases.BucketPolicyFile...)),
-		BucketPolicyTemplate:     strPtrIfSet(envValue(env, envAliases.BucketPolicyTemplate...)),
-		CreateScopedCredentials:  createScopedCredentials,
-		IAMEndpoint:              strPtrIfSet(envValue(env, envAliases.IAMEndpointURL...)),
-		IAMUserName:              strPtrIfSet(envValue(env, envAliases.IAMUserName...)),
-		IAMUserPrefix:            envStringPtr(env, envAliases.IAMUserPrefix...),
-		IAMPath:                  envStringPtr(env, envAliases.IAMPath...),
-		CredentialPolicyTemplate: strPtrIfSet(envValue(env, envAliases.CredentialPolicyTmpl...)),
-		OVHAPIEndpoint:           strPtrIfSet(envValue(env, envAliases.OVHAPIEndpoint...)),
-		OVHAccessToken:           strPtrIfSet(envValue(env, envAliases.OVHAccessToken...)),
-		OVHApplicationKey:        strPtrIfSet(envValue(env, envAliases.OVHApplicationKey...)),
-		OVHApplicationSecret:     strPtrIfSet(envValue(env, envAliases.OVHApplicationSecret...)),
-		OVHConsumerKey:           strPtrIfSet(envValue(env, envAliases.OVHConsumerKey...)),
-		OVHClientID:              strPtrIfSet(envValue(env, envAliases.OVHClientID...)),
-		OVHClientSecret:          strPtrIfSet(envValue(env, envAliases.OVHClientSecret...)),
-		OVHS3Endpoint:            strPtrIfSet(envValue(env, envAliases.OVHS3Endpoint...)),
-		OVHServiceName:           strPtrIfSet(envValue(env, envAliases.OVHServiceName...)),
-		OVHUserRole:              strPtrIfSet(envValue(env, envAliases.OVHUserRole...)),
-		OVHStoragePolicyRole:     strPtrIfSet(envValue(env, envAliases.OVHStoragePolicyRole...)),
-		OVHEncryptData:           ovhEncryptData,
-		OVHRotateCredentials:     ovhRotateCredentials,
-		DeleteBucket:             deleteBucket,
-		Force:                    force,
-		Timeout:                  timeout,
-		Output:                   strPtrIfSet(envValue(env, envAliases.OutputFormat...)),
-		DryRun:                   dryRun,
 	}, nil
 }
 
@@ -1073,6 +983,9 @@ func mergeSources(sources ...source) settings {
 		if src.OVHRotateCredentials != nil {
 			cfg.OVHRotateCredentials = *src.OVHRotateCredentials
 		}
+		if src.OVHTags != nil {
+			cfg.OVHTags = cloneStringMap(*src.OVHTags)
+		}
 		if src.DeleteBucket != nil {
 			cfg.DeleteBucket = *src.DeleteBucket
 		}
@@ -1099,7 +1012,7 @@ func mergeSources(sources ...source) settings {
 
 func validateSettings(cfg settings) error {
 	if len(cfg.Buckets) == 0 && cfg.BatchFile == "" {
-		return errors.New("at least one --bucket or a --batch-file is required unless provided via environment or config")
+		return errors.New("at least one --bucket or a --batch-file is required unless provided via config")
 	}
 	provider := cfg.Provider
 	if provider == "" {
@@ -1112,6 +1025,12 @@ func validateSettings(cfg settings) error {
 	}
 	if cfg.OVHRotateCredentials && provider != providerOVH {
 		return errors.New("--ovh-rotate-credentials requires --provider ovh")
+	}
+	if len(cfg.OVHTags) > 0 && provider != providerOVH {
+		return errors.New("--ovh-tag and ovh_tags require --provider ovh")
+	}
+	if err := validateStringMap("OVH tag", cfg.OVHTags); err != nil {
+		return err
 	}
 	if cfg.DeleteBucket && cfg.OVHRotateCredentials {
 		return errors.New("use either --delete or --ovh-rotate-credentials, not both")
@@ -1305,7 +1224,7 @@ func buildProvisionTargets(cfg settings) ([]provisionTarget, error) {
 	}
 
 	if len(targets) == 0 {
-		return nil, errors.New("no bucket targets were resolved from flags, environment, config, or batch file")
+		return nil, errors.New("no bucket targets were resolved from flags, config, or batch file")
 	}
 
 	if cfg.IAMUserName != "" && len(targets) > 1 {
@@ -2046,87 +1965,11 @@ func envMap(values []string) map[string]string {
 	return result
 }
 
-func envValue(env map[string]string, names ...string) string {
-	if value := envFirst(env, names...); value != nil {
-		return *value
-	}
-	return ""
-}
-
-func envFirst(env map[string]string, names ...string) *string {
-	for _, name := range names {
-		if value, ok := env[name]; ok && strings.TrimSpace(value) != "" {
-			valueCopy := value
-			return &valueCopy
-		}
-	}
-	return nil
-}
-
-func envBoolAliases(env map[string]string, names ...string) (*bool, error) {
-	for _, name := range names {
-		value, ok := env[name]
-		if !ok || strings.TrimSpace(value) == "" {
-			continue
-		}
-
-		parsed, err := strconv.ParseBool(value)
-		if err != nil {
-			return nil, fmt.Errorf("invalid boolean value for %s: %q", name, value)
-		}
-		return &parsed, nil
-	}
-	return nil, nil
-}
-
-func envDurationAliases(env map[string]string, names ...string) (*time.Duration, error) {
-	for _, name := range names {
-		value, ok := env[name]
-		if !ok || strings.TrimSpace(value) == "" {
-			continue
-		}
-
-		parsed, err := parsePositiveDuration(value)
-		if err != nil {
-			return nil, fmt.Errorf("invalid duration value for %s: %q", name, value)
-		}
-		return &parsed, nil
-	}
-	return nil, nil
-}
-
-func strPtrIfSet(value string) *string {
-	if strings.TrimSpace(value) == "" {
-		return nil
-	}
-	valueCopy := value
-	return &valueCopy
-}
-
-func envStringPtr(env map[string]string, names ...string) *string {
-	for _, name := range names {
-		if value, ok := env[name]; ok {
-			valueCopy := value
-			return &valueCopy
-		}
-	}
-	return nil
-}
-
 func stringPtrIfField(data []byte, field, value string) *string {
 	if !jsonFieldPresent(data, field) {
 		return nil
 	}
 	valueCopy := value
-	return &valueCopy
-}
-
-func stringSlicePtrIfValue(values []string) *[]string {
-	values = dedupeStringsPreserveOrder(values)
-	if len(values) == 0 {
-		return nil
-	}
-	valueCopy := append([]string{}, values...)
 	return &valueCopy
 }
 
@@ -2138,6 +1981,14 @@ func stringSlicePtrIfSet(data []byte, fields, values []string) *[]string {
 		}
 	}
 	return nil
+}
+
+func stringMapPtrIfField(data []byte, field string, value map[string]string) *map[string]string {
+	if !jsonFieldPresent(data, field) {
+		return nil
+	}
+	valueCopy := cloneStringMap(value)
+	return &valueCopy
 }
 
 func boolPtrIfSet(data []byte, field string, value bool) *bool {
@@ -2212,6 +2063,17 @@ func changedStringSlice(fs *pflag.FlagSet, name string, values []string) *[]stri
 	return nil
 }
 
+func changedStringMap(fs *pflag.FlagSet, name string, values []string) (*map[string]string, error) {
+	if !fs.Changed(name) {
+		return nil, nil
+	}
+	parsed, err := parseStringMap(values)
+	if err != nil {
+		return nil, fmt.Errorf("--%s must be key=value: %w", name, err)
+	}
+	return &parsed, nil
+}
+
 func changedBool(fs *pflag.FlagSet, name string, value bool) *bool {
 	if fs.Changed(name) {
 		valueCopy := value
@@ -2240,6 +2102,53 @@ func parsePositiveDuration(value string) (time.Duration, error) {
 		return 0, errors.New("duration must be positive")
 	}
 	return parsed, nil
+}
+
+func parseStringMap(values []string) (map[string]string, error) {
+	parsed := make(map[string]string, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		key, val, ok := strings.Cut(trimmed, "=")
+		if !ok {
+			return nil, fmt.Errorf("%q is missing =", value)
+		}
+		key = strings.TrimSpace(key)
+		val = strings.TrimSpace(val)
+		if key == "" {
+			return nil, fmt.Errorf("%q has an empty key", value)
+		}
+		if val == "" {
+			return nil, fmt.Errorf("%q has an empty value", value)
+		}
+		parsed[key] = val
+	}
+	return parsed, nil
+}
+
+func validateStringMap(label string, values map[string]string) error {
+	for key, value := range values {
+		if strings.TrimSpace(key) == "" {
+			return fmt.Errorf("%s key must not be empty", label)
+		}
+		if strings.TrimSpace(value) == "" {
+			return fmt.Errorf("%s %q value must not be empty", label, key)
+		}
+	}
+	return nil
+}
+
+func cloneStringMap(values map[string]string) map[string]string {
+	if values == nil {
+		return nil
+	}
+	clone := make(map[string]string, len(values))
+	for key, value := range values {
+		clone[key] = value
+	}
+	return clone
 }
 
 func extractConfigPath(args []string) string {
@@ -2287,9 +2196,6 @@ func detectOutputFormat(args []string, env map[string]string) string {
 			output = configOutput
 		}
 	}
-	if envOutput := envValue(env, envAliases.OutputFormat...); envOutput != "" {
-		output = envOutput
-	}
 	if cliOutput := extractOutputFormat(args); cliOutput != "" {
 		output = cliOutput
 	}
@@ -2320,10 +2226,6 @@ func readConfigOutputFormat(path string) string {
 
 func resolveConfigPath(args []string, env map[string]string) (string, error) {
 	if configPath := extractConfigPath(args); configPath != "" {
-		return configPath, nil
-	}
-
-	if configPath := envValue(env, envAliases.ConfigFile...); configPath != "" {
 		return configPath, nil
 	}
 
@@ -2363,23 +2265,8 @@ func defaultConfigPath(env map[string]string) string {
 	return filepath.Join(baseDir, binaryName, defaultConfigFileName)
 }
 
-func shouldShowIntroHelp(args []string, env map[string]string) bool {
-	if len(args) != 0 {
-		return false
-	}
-	if envValue(env, envAliases.ConfigFile...) != "" {
-		return false
-	}
-	if envValue(env, envAliases.BatchFile...) != "" {
-		return false
-	}
-	if len(parseCommaSeparatedValues(envValue(env, envAliases.BucketNames...))) > 0 {
-		return false
-	}
-	if envValue(env, envAliases.BucketName...) != "" {
-		return false
-	}
-	return true
+func shouldShowIntroHelp(args []string, _ map[string]string) bool {
+	return len(args) == 0
 }
 
 func yesNo(value bool) string {
@@ -2394,21 +2281,6 @@ func emptyFallback(value, fallback string) string {
 		return fallback
 	}
 	return value
-}
-
-func parseCommaSeparatedValues(value string) []string {
-	if strings.TrimSpace(value) == "" {
-		return nil
-	}
-	parts := strings.Split(value, ",")
-	values := make([]string, 0, len(parts))
-	for _, part := range parts {
-		trimmed := strings.TrimSpace(part)
-		if trimmed != "" {
-			values = append(values, trimmed)
-		}
-	}
-	return values
 }
 
 func dedupeStringsPreserveOrder(values []string) []string {

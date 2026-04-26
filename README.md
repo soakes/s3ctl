@@ -16,7 +16,7 @@ It is designed for the common operational workflow:
 - create a fresh access key and secret key for each bucket
 - attach a generated policy so each credential only has access to its own bucket
 - delete empty buckets safely, or delete non-empty buckets with an explicit force guard
-- drive the same workflow from flags, environment variables, JSON config, or CSV batch input
+- drive the same workflow from flags, JSON config, or CSV batch input
 
 ## Quick Start
 
@@ -99,6 +99,12 @@ s3ctl \
   --bucket app-data \
   --delete \
   --force
+```
+
+Show focused bucket workflow help:
+
+```bash
+s3ctl --bucket app-data --help
 ```
 
 Plan multiple buckets from repeated flags:
@@ -215,7 +221,7 @@ The website is built with Vite and the local preview flow falls back to
 
 For bulk runs, the normal pattern is:
 
-1. Define the shared provider settings once with flags, env vars, or config.
+1. Define the shared provider settings once with flags or config.
 2. Feed the bucket list in with repeated `--bucket` flags or `--batch-file`.
 3. Let `s3ctl` generate one scoped user and one access key pair per bucket.
 
@@ -242,9 +248,8 @@ logs-archive,true,bucket-readonly,false
 Configuration is resolved in this order:
 
 1. CLI flags
-2. Environment variables
-3. JSON config file
-4. Built-in defaults
+2. JSON config file
+3. Built-in defaults
 
 Example config:
 
@@ -266,9 +271,9 @@ Run it:
 s3ctl --config ./examples/s3ctl.json --dry-run --output json
 ```
 
-When `--output json`, `S3CTL_OUTPUT_FORMAT=json`, or `"output": "json"` is
-set, command failures are also written to stdout as JSON. The process still
-exits non-zero, but automation can read the `error.code`, `error.message`, and
+When `--output json` or `"output": "json"` is set, command failures are also
+written to stdout as JSON. The process still exits non-zero, but automation can
+read the `error.code`, `error.message`, and
 optional `error.detail` fields instead of scraping text:
 
 ```json
@@ -327,9 +332,10 @@ Default user config path:
 - `$XDG_CONFIG_HOME/s3ctl/config.json`
 - `$HOME/.config/s3ctl/config.json`
 
-When `--config` and `S3CTL_CONFIG_FILE` are unset, `s3ctl` will automatically load that
-default file if it exists. This is the right place for shared operator settings such as
-provider, endpoint, region, profile, credentials, IAM/OVH defaults, and output preferences.
+When `--config` is unset, `s3ctl` will automatically load that default file if
+it exists. This is the right place for shared operator settings such as
+provider, endpoint, region, profile, credentials, IAM/OVH defaults, and output
+preferences.
 
 Example default user config:
 
@@ -344,10 +350,11 @@ Example default user config:
 }
 ```
 
-Use either `profile` or explicit `access_key` and `secret_key` values, not both. Add
-`session_token` when your master credentials are temporary. Prefer environment
-variables for real secrets when possible; if you keep them in the default user config,
-store that file outside the repository and restrict its permissions.
+Use either `profile` or explicit `access_key` and `secret_key` values, not both.
+Add `session_token` when your master credentials are temporary. If those values
+are not set in `s3ctl`, the AWS SDK still uses its normal credential and profile
+discovery. If you keep secrets in the default user config, store that file
+outside the repository and restrict its permissions.
 
 Install that as your per-user default:
 
@@ -355,57 +362,6 @@ Install that as your per-user default:
 install -d -m 700 "${XDG_CONFIG_HOME:-$HOME/.config}/s3ctl"
 install -m 600 ./examples/user-config.json "${XDG_CONFIG_HOME:-$HOME/.config}/s3ctl/config.json"
 ```
-
-## Environment Variables
-
-Primary variables:
-
-- `S3CTL_CONFIG_FILE`
-- `S3CTL_BUCKET_NAME`
-- `S3CTL_BUCKET_NAMES`
-- `S3CTL_BATCH_FILE`
-- `S3CTL_ENDPOINT_URL`
-- `S3CTL_REGION`
-- `S3CTL_PROFILE`
-- `S3CTL_ACCESS_KEY_ID`
-- `S3CTL_SECRET_ACCESS_KEY`
-- `S3CTL_SESSION_TOKEN`
-- `S3CTL_ENABLE_VERSIONING`
-- `S3CTL_BUCKET_POLICY_FILE`
-- `S3CTL_BUCKET_POLICY_TEMPLATE`
-- `S3CTL_CREATE_SCOPED_CREDENTIALS`
-- `S3CTL_PROVIDER`
-- `S3CTL_IAM_ENDPOINT_URL`
-- `S3CTL_IAM_USER_NAME`
-- `S3CTL_IAM_USER_PREFIX`
-- `S3CTL_IAM_PATH`
-- `S3CTL_CREDENTIAL_POLICY_TEMPLATE`
-- `S3CTL_OVH_API_ENDPOINT`
-- `S3CTL_OVH_ACCESS_TOKEN`
-- `S3CTL_OVH_APPLICATION_KEY`
-- `S3CTL_OVH_APPLICATION_SECRET`
-- `S3CTL_OVH_CONSUMER_KEY`
-- `S3CTL_OVH_CLIENT_ID`
-- `S3CTL_OVH_CLIENT_SECRET`
-- `S3CTL_OVH_S3_ENDPOINT`
-- `S3CTL_OVH_SERVICE_NAME`
-- `S3CTL_OVH_PROJECT_ID`
-- `S3CTL_OVH_USER_ROLE`
-- `S3CTL_OVH_STORAGE_POLICY_ROLE`
-- `S3CTL_OVH_ENCRYPT_DATA`
-- `S3CTL_OVH_ROTATE_CREDENTIALS`
-- `S3CTL_DELETE_BUCKET`
-- `S3CTL_FORCE`
-- `S3CTL_TIMEOUT`
-- `S3CTL_OUTPUT_FORMAT`
-- `S3CTL_DRY_RUN`
-
-AWS-standard variables such as `AWS_PROFILE`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `AWS_REGION`, and `AWS_DEFAULT_REGION` are also supported where appropriate.
-
-OVHcloud auth can be set in `s3ctl` JSON config or environment. Configure one
-mode at a time: `ovh_client_id` with `ovh_client_secret` for OAuth2 service
-accounts, `ovh_access_token` for a short-lived token, or classic OVH API
-`ovh_application_key`, `ovh_application_secret`, and `ovh_consumer_key`.
 
 ## Built-In Templates
 
@@ -424,7 +380,11 @@ Scoped credential policy templates:
 | `bucket-readwrite` | Allows bucket location lookup, bucket listing, object reads, writes, deletes, and multipart upload operations for one bucket. |
 | `bucket-admin` | Allows all S3 actions against one bucket and its objects. |
 
-By default, generated scoped credentials use `bucket-readwrite`, generated IAM user names are derived directly from bucket names, and no IAM path is set. Configure `iam_user_prefix`, `--iam-user-prefix`, or `S3CTL_IAM_USER_PREFIX` when generated user names should share a prefix. Configure `iam_path`, `--iam-path`, or `S3CTL_IAM_PATH` when generated users should be created under an IAM path.
+By default, generated scoped credentials use `bucket-readwrite`, generated IAM
+user names are derived directly from bucket names, and no IAM path is set.
+Configure `iam_user_prefix` or `--iam-user-prefix` when generated user names
+should share a prefix. Configure `iam_path` or `--iam-path` when generated
+users should be created under an IAM path.
 
 ## IAM Notes
 
@@ -435,7 +395,8 @@ Scoped credential provisioning uses the IAM API in addition to the S3 API. The p
 - attach inline IAM policies
 - create IAM access keys
 
-AWS IAM is the default target. When you need an IAM-compatible alternative, use `--iam-endpoint` or `S3CTL_IAM_ENDPOINT_URL`.
+AWS IAM is the default target. When you need an IAM-compatible alternative, use
+`--iam-endpoint` or `iam_endpoint` in JSON config.
 
 ## Deleting Buckets
 
@@ -474,8 +435,8 @@ The shorter `"delete": true` config key is accepted as an alias for
 Keep `"force": true` out of shared default configs unless every run using that
 config should be allowed to remove bucket contents before deleting buckets.
 
-Use `--timeout`, `S3CTL_TIMEOUT`, or `"timeout": "30m"` for large buckets or
-slower object-storage endpoints. The default timeout is `10m`.
+Use `--timeout` or `"timeout": "30m"` for large buckets or slower
+object-storage endpoints. The default timeout is `10m`.
 
 ## OVHcloud Notes
 
@@ -494,7 +455,8 @@ Required OVHcloud settings:
 - `provider`: `ovh`
 - `ovh_service_name`: the Public Cloud project ID/service name
 - one OVHcloud auth mode: OAuth2 service account credentials, an access token,
-  classic OVH API application credentials, or the official OVHcloud environment/config files
+  classic OVH API application credentials, or standard go-ovh client discovery
+  such as `ovh.conf`
 - `region`: an OVHcloud Public Cloud/Object Storage region such as `UK`, `GRA`, `BHS`, `SBG`, or `EU-WEST-PAR`.
   Use the uppercase region returned by OVHcloud's Public Cloud API. `s3ctl`
   also accepts lowercase S3 endpoint regions such as `uk` and normalizes them
@@ -513,6 +475,10 @@ Optional OVHcloud settings:
 - `ovh_encrypt_data`: set to `true` to enable OVHcloud server-side encryption
   with OVH-managed keys (`AES256` / SSE-OMK). When explicitly set to `false`,
   `s3ctl` requests OVHcloud `plaintext` container storage.
+- `ovh_tags`: optional tags to apply to new OVHcloud containers. `s3ctl` does
+  not add tags by default. Use JSON config such as
+  `"ovh_tags": {"environment": "prod", "owner": "platform"}`, repeat
+  `--ovh-tag environment=prod --ovh-tag owner=platform`.
 - `ovh_rotate_credentials`: set to `true` to rotate S3 credentials for the
   existing OVHcloud container owner instead of creating a new container. Keep it
   out of the normal provisioning config unless every run should be a rotation.

@@ -60,8 +60,11 @@
 - Keep exported APIs and package-level behavior documented when lint rules
   require it.
 - Prefer small helpers and focused structs over large generic utility layers.
-- Keep CLI help, examples, and environment variable names polished and ready to
-  copy into production workflows.
+- Keep CLI help, examples, and configuration names polished and ready to copy
+  into production workflows.
+- Do not add new `S3CTL_*` configuration variables. Prefer CLI flags and JSON
+  config for `s3ctl` settings, while leaving standard AWS/go-ovh credential
+  discovery to the upstream SDK clients.
 
 ## Workflow & Security Rules
 
