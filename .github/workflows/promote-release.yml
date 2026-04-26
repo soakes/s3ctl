@@ -1,0 +1,100 @@
+name: Promote Release Candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      prerelease_tag:
+        description: Release candidate tag to promote, for example v1.2.3-rc.2
+        required: true
+        type: string
+
+concurrency:
+  group: promote-release
+  cancel-in-progress: false
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  promote:
+    name: Promote RC to Stable
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check release automation token
+        env:
+          RELEASE_AUTOMATION_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
+        run: |
+          if [ -z "${RELEASE_AUTOMATION_TOKEN}" ]; then
+            echo "RELEASE_AUTOMATION_TOKEN is required to push the stable tag and trigger publish workflows." >&2
+            exit 1
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ inputs.prerelease_tag }}
+
+      - name: Fetch tags
+        run: git fetch --tags --force
+
+      - name: Validate prerelease tag
+        id: promote
+        run: |
+          prerelease_tag="${{ inputs.prerelease_tag }}"
+          default_branch="${{ github.event.repository.default_branch }}"
+
+          if [[ ! "${prerelease_tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]]; then
+            echo "Expected a prerelease tag like v1.2.3-rc.2, got: ${prerelease_tag}" >&2
+            exit 1
+          fi
+
+          git rev-parse "${prerelease_tag}^{commit}" >/dev/null
+
+          stable_tag="${prerelease_tag%-rc.*}"
+          if git show-ref --verify --quiet "refs/tags/${stable_tag}"; then
+            echo "Stable tag already exists: ${stable_tag}" >&2
+            exit 1
+          fi
+
+          release_sha="$(git rev-parse "${prerelease_tag}^{commit}")"
+          git fetch origin "refs/heads/${default_branch}:refs/remotes/origin/${default_branch}" --force
+          git merge-base --is-ancestor "${release_sha}" "refs/remotes/origin/${default_branch}"
+
+          {
+            echo "prerelease_tag=${prerelease_tag}"
+            echo "stable_tag=${stable_tag}"
+            echo "release_sha=${release_sha}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Create and push stable tag
+        env:
+          RELEASE_AUTOMATION_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ steps.promote.outputs.stable_tag }}" "${{ steps.promote.outputs.release_sha }}" \
+            -m "Promote ${{ steps.promote.outputs.prerelease_tag }} to ${{ steps.promote.outputs.stable_tag }}"
+          git push "https://x-access-token:${RELEASE_AUTOMATION_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            "refs/tags/${{ steps.promote.outputs.stable_tag }}"
+
+      - name: Wait for stable publish workflows
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bash scripts/wait-for-tag-workflow-runs.sh \
+            "${{ steps.promote.outputs.stable_tag }}" \
+            "${{ steps.promote.outputs.release_sha }}" \
+            release-assets.yml \
+            container-image.yml
+
+      - name: Write workflow summary
+        run: |
+          printf "Promoted \`%s\` to stable tag \`%s\`.\n" \
+            "${{ steps.promote.outputs.prerelease_tag }}" \
+            "${{ steps.promote.outputs.stable_tag }}" >> "${GITHUB_STEP_SUMMARY}"

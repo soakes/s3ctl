@@ -96,6 +96,12 @@
   ```
 - If you change website or release automation behavior, run the matching local
   validation that exercises those paths before considering the change complete.
+- If you change release tagging, release notes, or publish workflows, also run:
+  ```bash
+  bash -n scripts/*.sh
+  bash scripts/next-release.sh
+  bash scripts/generate-release-notes.sh "$(git describe --tags --abbrev=0 2>/dev/null || true)" HEAD /tmp/s3ctl-release-notes.md
+  ```
 
 ## Commit & PR Rules
 

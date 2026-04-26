@@ -84,7 +84,10 @@ jobs:
           bash -n scripts/*.sh
           bash scripts/generate-release-notes.sh '' HEAD /tmp/s3ctl-release-notes.md
           grep -F '## Release Overview' /tmp/s3ctl-release-notes.md
+          grep -F '## Installation' /tmp/s3ctl-release-notes.md
           grep -F '## Published Artifacts' /tmp/s3ctl-release-notes.md
+          bash scripts/next-release.sh > /tmp/s3ctl-next-release.txt
+          grep -F 'release_required=' /tmp/s3ctl-next-release.txt
 
           bash scripts/install.sh --help > /tmp/s3ctl-install-help.txt
           grep -F -- '--version <tag|latest>' /tmp/s3ctl-install-help.txt

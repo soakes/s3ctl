@@ -1,0 +1,171 @@
+name: Automated Release Candidate
+
+on:
+  workflow_run:
+    workflows:
+      - Build and Validate
+    types:
+      - completed
+  workflow_dispatch:
+
+concurrency:
+  group: automated-release-${{ github.event_name == 'workflow_dispatch' && github.ref || github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  tag:
+    name: Create Release Candidate Tag
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_branch == 'main'
+      )
+    runs-on: ubuntu-latest
+
+    env:
+      RELEASE_SHA: ${{ github.event_name == 'workflow_dispatch' && github.sha || github.event.workflow_run.head_sha }}
+
+    steps:
+      - name: Check release automation token
+        id: automation
+        env:
+          RELEASE_AUTOMATION_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
+        run: |
+          if [ -n "${RELEASE_AUTOMATION_TOKEN}" ]; then
+            echo "enabled=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          echo "enabled=false" >> "${GITHUB_OUTPUT}"
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            echo "RELEASE_AUTOMATION_TOKEN is required to create release tags and trigger publish workflows." >&2
+            exit 1
+          fi
+
+          {
+            echo "Automated release tagging skipped."
+            echo
+            echo "Add a \`RELEASE_AUTOMATION_TOKEN\` repository secret with contents and workflows write access to enable RC and stable tag creation."
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Checkout repository
+        if: steps.automation.outputs.enabled == 'true'
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ env.RELEASE_SHA }}
+
+      - name: Fetch tags
+        if: steps.automation.outputs.enabled == 'true'
+        run: git fetch --tags --force
+
+      - name: Skip if release tag already exists on HEAD
+        if: steps.automation.outputs.enabled == 'true'
+        id: existing
+        run: |
+          existing_tag="$(git tag --points-at "${RELEASE_SHA}" --list 'v*' | head -n1 || true)"
+          if [ -n "${existing_tag}" ]; then
+            echo "release_required=false" >> "${GITHUB_OUTPUT}"
+            echo "existing_tag=${existing_tag}" >> "${GITHUB_OUTPUT}"
+          else
+            echo "release_required=true" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Compute next release tag
+        id: release
+        if: steps.existing.outputs.release_required == 'true'
+        run: |
+          while IFS='=' read -r key value; do
+            echo "${key}=${value}" >> "${GITHUB_OUTPUT}"
+          done < <(bash scripts/next-release.sh)
+
+      - name: Compute next prerelease tag
+        id: candidate
+        if: steps.existing.outputs.release_required == 'true' && steps.release.outputs.release_required == 'true'
+        run: |
+          stable_tag="${{ steps.release.outputs.next_tag }}"
+          latest_candidate="$(
+            git tag --list "${stable_tag}-rc.*" --sort=-v:refname \
+              | head -n1 || true
+          )"
+          rc_number=1
+          if [ -n "${latest_candidate}" ]; then
+            rc_number="${latest_candidate##*.}"
+            rc_number="$((rc_number + 1))"
+          fi
+          echo "stable_tag=${stable_tag}" >> "${GITHUB_OUTPUT}"
+          echo "candidate_tag=${stable_tag}-rc.${rc_number}" >> "${GITHUB_OUTPUT}"
+
+      - name: Create and push prerelease tag
+        if: steps.existing.outputs.release_required == 'true' && steps.release.outputs.release_required == 'true'
+        env:
+          RELEASE_AUTOMATION_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ steps.candidate.outputs.candidate_tag }}" -m "Release candidate ${{ steps.candidate.outputs.candidate_tag }}"
+          git push "https://x-access-token:${RELEASE_AUTOMATION_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            "refs/tags/${{ steps.candidate.outputs.candidate_tag }}"
+
+      - name: Wait for prerelease publish workflows
+        if: steps.existing.outputs.release_required == 'true' && steps.release.outputs.release_required == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bash scripts/wait-for-tag-workflow-runs.sh \
+            "${{ steps.candidate.outputs.candidate_tag }}" \
+            "${RELEASE_SHA}" \
+            release-assets.yml \
+            container-image.yml
+
+      - name: Create and push stable tag
+        if: steps.existing.outputs.release_required == 'true' && steps.release.outputs.release_required == 'true'
+        env:
+          RELEASE_AUTOMATION_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ steps.candidate.outputs.stable_tag }}" -m "Release ${{ steps.candidate.outputs.stable_tag }}"
+          git push "https://x-access-token:${RELEASE_AUTOMATION_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            "refs/tags/${{ steps.candidate.outputs.stable_tag }}"
+
+      - name: Wait for stable publish workflows
+        if: steps.existing.outputs.release_required == 'true' && steps.release.outputs.release_required == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bash scripts/wait-for-tag-workflow-runs.sh \
+            "${{ steps.candidate.outputs.stable_tag }}" \
+            "${RELEASE_SHA}" \
+            release-assets.yml \
+            container-image.yml
+
+      - name: Write workflow summary
+        if: steps.automation.outputs.enabled == 'true'
+        run: |
+          if [ "${{ steps.existing.outputs.release_required }}" = "false" ]; then
+            printf "Release tag already present on HEAD: \`%s\`\n" "${{ steps.existing.outputs.existing_tag }}" >> "${GITHUB_STEP_SUMMARY}"
+            exit 0
+          fi
+
+          if [ "${{ steps.release.outputs.release_required }}" != "true" ]; then
+            printf "No releasable commits were found since \`%s\`; skipping automated RC tagging.\n" "${{ steps.release.outputs.previous_tag }}" >> "${GITHUB_STEP_SUMMARY}"
+            exit 0
+          fi
+
+          printf "Created automated release candidate \`%s\`, validated the prerelease publish path, and promoted it to stable \`%s\` (%s bump from \`%s\`).\n" \
+            "${{ steps.candidate.outputs.candidate_tag }}" \
+            "${{ steps.candidate.outputs.stable_tag }}" \
+            "${{ steps.release.outputs.bump }}" \
+            "${{ steps.release.outputs.previous_tag }}" >> "${GITHUB_STEP_SUMMARY}"

@@ -14,9 +14,12 @@ categories:
   - title: "Fixes"
     labels:
       - bug
-  - title: "Container and Delivery"
+  - title: "Packaging and Delivery"
     labels:
       - container
+      - packaging
+  - title: "Release Workflow"
+    labels:
       - release
   - title: "CI and Automation"
     labels:
@@ -32,6 +35,10 @@ categories:
     labels:
       - maintenance
 version-resolver:
+  # Documentation, CI, and maintenance labels can still appear in grouped
+  # release notes when they ship alongside release-bearing work, but they
+  # should not bump the version on their own. `scripts/next-release.sh` is the
+  # gating source of truth for whether a new draft or tag should exist at all.
   major:
     labels:
       - breaking
@@ -42,6 +49,7 @@ version-resolver:
     labels:
       - bug
       - container
+      - packaging
       - dependencies
       - release
       - security
@@ -76,9 +84,20 @@ autolabeler:
     title:
       - '/^ci(\([^)]+\))?:/i'
       - '/^fix\(ci\):/i'
+  - label: release
+    title:
+      - '/^fix\(release\):/i'
+      - '/^release(\([^)]+\))?:/i'
     files:
-      - ".github/workflows/**/*"
-      - ".github/dependabot.yml"
+      - "scripts/next-release.sh"
+      - "scripts/generate-release-notes.sh"
+      - "scripts/wait-for-tag-workflow-runs.sh"
+      - ".github/release-drafter.yml"
+      - ".github/workflows/automated-release.yml"
+      - ".github/workflows/container-image.yml"
+      - ".github/workflows/promote-release.yml"
+      - ".github/workflows/release-assets.yml"
+      - ".github/workflows/release-drafter.yml"
   - label: dependencies
     branch:
       - '/^automation\/.+/'
@@ -105,14 +124,13 @@ autolabeler:
       - '/^container(\([^)]+\))?:/i'
     files:
       - "Dockerfile"
-  - label: release
+  - label: packaging
     title:
-      - '/^release(\([^)]+\))?:/i'
+      - '/^(packaging|build)(\([^)]+\))?:/i'
     files:
-      - ".github/release-drafter.yml"
-      - ".github/workflows/release-drafter.yml"
-      - ".github/workflows/release-assets.yml"
-      - ".github/workflows/container-image.yml"
+      - "scripts/build-apt-repository.sh"
+      - "scripts/build-deb-package.sh"
+      - ".github/workflows/pages-site.yml"
   - label: maintenance
     title:
       - '/^(chore|refactor|test)(\([^)]+\))?:/i'
@@ -123,6 +141,8 @@ template: |
 
   ## Published Artifacts
 
-  - Release binaries for `linux/amd64`, `linux/arm64`, `darwin/amd64`, and `darwin/arm64`
-  - Checksums attached to the release
+  - Release binaries for `linux/amd64`, `linux/arm64`, `linux/arm/v7`, `darwin/amd64`, and `darwin/arm64`
+  - Debian packages for `amd64`, `arm64`, and `armhf`
+  - SHA256 checksums attached to the release
   - Container images published to `ghcr.io/soakes/s3ctl`
+  - Stable releases refresh the GitHub Pages install hub and signed APT repository metadata when signing secrets are configured

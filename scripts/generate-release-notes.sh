@@ -330,6 +330,7 @@ compare_ref=''
 release_tag_ref=''
 release_target="${project_name}"
 release_label='Stable release'
+release_channel='stable'
 has_changes=false
 
 if [ -n "${previous_tag}" ]; then
@@ -340,6 +341,7 @@ release_tag_ref="$(format_tag_ref "${tag_name}")"
 
 if [[ "${tag_name}" =~ ^(v[0-9]+\.[0-9]+\.[0-9]+)-rc\.[0-9]+$ ]]; then
   release_label='Release candidate'
+  release_channel='prerelease'
 fi
 
 for section in "${sections[@]}"; do
@@ -359,6 +361,11 @@ done
   else
     printf -- '- Release scope: Initial public release\n'
   fi
+  if [ "${release_channel}" = "prerelease" ]; then
+    printf -- "- Channel: prerelease validation for the next stable tag; GHCR publishes \`:%s\` and \`:rc\`\n" "${tag_name}"
+  else
+    printf -- "- Channel: stable; GitHub marks this as latest and GHCR publishes \`:%s\`, \`:latest\`, and semver convenience tags\n" "${tag_name}"
+  fi
   printf '\n'
 
   if [ -z "${previous_tag}" ]; then
@@ -367,6 +374,21 @@ done
     printf -- '- Generate bucket-scoped IAM users and fresh access keys automatically with built-in credential policy templates.\n'
     printf -- '- Support dry-run planning, bucket versioning, custom bucket policies, and operator-friendly text or JSON output.\n'
     printf -- '- Ship as cross-platform binaries, Debian packages, a multi-arch GHCR image, and a GitHub Pages install hub.\n\n'
+  fi
+
+  printf '## Installation\n\n'
+  printf 'Installer script:\n\n'
+  printf '```bash\n'
+  printf 'curl -fsSL https://soakes.github.io/s3ctl/install.sh | bash -s -- --version %s\n' "${tag_name}"
+  printf '```\n\n'
+  printf 'Container image:\n\n'
+  printf '```bash\n'
+  printf 'docker run --rm ghcr.io/soakes/s3ctl:%s --help\n' "${tag_name}"
+  printf '```\n\n'
+  printf "Verify downloaded archives and packages with the attached \`s3ctl_SHA256SUMS\` file.\n\n"
+
+  if [ "${release_channel}" = "prerelease" ]; then
+    printf "> This is a release candidate. It publishes tagged archives, Debian packages, checksums, and an \`:rc\` container image, but it does not move the stable APT channel or \`:latest\` container tag.\n\n"
   fi
 
   if [ -s "${tmpdir}/breaking.md" ]; then
@@ -414,5 +436,9 @@ done
   printf -- "- Debian packages for \`amd64\`, \`arm64\`, and \`armhf\`\n"
   printf -- '- SHA256 checksums attached to the release\n'
   printf -- "- Container images published to \`ghcr.io/soakes/s3ctl\`\n"
-  printf -- '- The GitHub Pages release hub is refreshed with install commands, release assets, and APT repository metadata\n'
+  if [ "${release_channel}" = "prerelease" ]; then
+    printf -- "- Prerelease artifacts are attached to GitHub Releases and the \`:rc\` container tag is refreshed\n"
+  else
+    printf -- '- The GitHub Pages release hub is refreshed with install commands, release assets, and APT repository metadata\n'
+  fi
 } > "${output_path}"

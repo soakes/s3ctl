@@ -149,6 +149,10 @@ Published release channels are designed to cover the normal operator paths:
 - a signed APT repository when archive signing secrets are configured
 - a multi-arch GHCR image
 
+Release candidates use tags like `v1.2.3-rc.1`. They publish the same GitHub
+release assets and a GHCR `:rc` image for validation, but they do not move the
+stable APT channel or the `:latest` container tag.
+
 Direct installer, recommended for macOS:
 
 ```bash
@@ -767,9 +771,24 @@ The Linux binaries are built with `CGO_ENABLED=0`, so releases are architecture-
 This repository includes:
 
 - validation CI for formatting, vetting, tests, build output, and CLI smoke checks
+- automated release-candidate creation after successful `main` validation
+- manual promotion from a validated `vX.Y.Z-rc.N` tag to the matching stable tag
 - multi-arch container validation and GHCR publishing
 - tag-driven release builds for `linux/amd64`, `linux/arm64`, `linux/arm/v7`, `darwin/amd64`, and `darwin/arm64`
 - Debian package publication for `amd64`, `arm64`, and `armhf`
 - GitHub Pages release site publication with installer metadata
 - signed APT repository publication when signing secrets are configured
 - release drafter, labels, and dependency automation
+
+Release tags are calculated from conventional commit subjects by
+`scripts/next-release.sh`. `feat:` creates a minor release, breaking changes
+create a major release, and `fix:`, `perf:`, `deps:`, `packaging:`,
+`container:`, or `release:` create a patch release. Documentation, CI, tests,
+and maintenance commits can still appear in release notes when they ship with
+operator-facing work, but they do not create a release by themselves.
+
+The automated release workflow requires a `RELEASE_AUTOMATION_TOKEN` repository
+secret with permission to push tags and trigger workflows. Without it, the
+workflow records a skip summary instead of creating tags. The APT repository
+path also requires `APT_GPG_PRIVATE_KEY`, `APT_GPG_KEY_ID`, and optionally
+`APT_GPG_PASSPHRASE`.
