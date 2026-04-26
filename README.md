@@ -9,12 +9,12 @@
 [![GHCR](https://img.shields.io/badge/GHCR-published-2088FF?style=flat-square&logo=github)](https://ghcr.io/soakes/s3ctl)
 [![Go](https://img.shields.io/badge/Go-1.26.2-00ADD8.svg?style=flat-square&logo=go&logoColor=white)](https://go.dev/)
 
-Built for operators who want bucket provisioning to be predictable,
-scriptable, and easy to hand to automation: create buckets, generate scoped
-credentials, rotate keys, delete empty buckets safely, and publish the tool
-through the same release paths every time.
+`s3ctl` is for teams that need repeatable bucket provisioning without manual
+storage and IAM setup. It creates buckets, issues scoped credentials, rotates
+OVHcloud keys, deletes empty buckets safely, and is available as release
+archives, Debian packages, an APT package, and a container image.
 
-**Quick links:** [📦 Releases](https://github.com/soakes/s3ctl/releases) · [🐳 GHCR](https://ghcr.io/soakes/s3ctl) · [🔐 Release Hub / APT](https://soakes.github.io/s3ctl/) · [🧰 Examples](examples)
+**Links:** [📦 Releases](https://github.com/soakes/s3ctl/releases) · [🐳 GHCR](https://ghcr.io/soakes/s3ctl) · [🔐 Release Hub / APT](https://soakes.github.io/s3ctl/) · [🧰 Examples](examples)
 
 ## 🧭 Table of Contents
 
@@ -30,9 +30,8 @@ through the same release paths every time.
 - [🧹 Deleting Buckets](#deleting-buckets)
 - [☁️ OVHcloud Notes](#ovhcloud-notes)
 - [🐳 Container](#container)
-- [🤖 Maintenance Automation](#maintenance-automation)
 - [🛠️ Development](#development)
-- [🚢 Release Automation](#release-automation)
+- [🚢 Release Process](#release-process)
 
 ---
 
@@ -54,7 +53,7 @@ It is designed for the common operational workflow:
 - delete empty buckets safely, or delete non-empty buckets with an explicit force guard
 - drive the same workflow from flags, JSON config, or CSV batch input
 
-### First Bucket Checklist
+### ✅ First Bucket Checklist
 
 1. Put shared provider settings in `~/.config/s3ctl/config.json`.
 2. Run `s3ctl --bucket app-data --dry-run --output json`.
@@ -71,9 +70,9 @@ It is designed for the common operational workflow:
 - **OVHcloud support**: creates containers, Public Cloud users, S3 keys, policies, and optional encryption
 - **Credential rotation**: rotates OVHcloud S3 keypairs by bucket/user name
 - **Safe deletion**: deletes empty buckets without `--force` and requires `--force` for non-empty buckets
-- **Automation output**: emits JSON success and error payloads for machine workflows
-- **Distribution**: publishes release archives, Debian packages, a signed APT repository, and GHCR images
-- **Release hygiene**: validates release candidates before promoting the same commit to stable
+- **JSON output**: emits success and error payloads for machine workflows
+- **Install options**: provides release archives, Debian packages, a signed APT repository, and GHCR images
+- **Validated releases**: publishes stable builds after release-candidate validation
 
 ---
 
@@ -202,17 +201,17 @@ s3ctl \
 
 ## 📦 Distribution
 
-Published release channels are designed to cover the normal operator paths:
+Published artifacts cover the supported installation paths:
 
 - GitHub release archives for `linux/amd64`, `linux/arm64`, `linux/arm/v7`, `darwin/amd64`, and `darwin/arm64`
 - Debian `.deb` packages for `amd64`, `arm64`, and `armhf`
 - a GitHub Pages release hub with install commands and release metadata
-- a signed APT repository when archive signing secrets are configured
+- a signed APT repository
 - a multi-arch GHCR image
 
-Release candidates use tags like `v1.2.3-rc.1`. They publish the same GitHub
-release assets and a GHCR `:rc` image for validation, but they do not move the
-stable APT channel or the `:latest` container tag.
+Release candidates use tags like `v1.2.3-rc.1`. They are useful for testing a
+version before it reaches the stable installer, stable APT channel, or
+`:latest` container tag.
 
 Direct installer, recommended for macOS:
 
@@ -271,10 +270,6 @@ EOF
 
 sudo apt update && sudo apt install s3ctl
 ```
-
-The Pages site and APT repository are published by workflow. The APT path requires the
-repository secrets `APT_GPG_PRIVATE_KEY`, `APT_GPG_KEY_ID`, and optionally
-`APT_GPG_PASSPHRASE` so the repository metadata can be signed for apt-secure.
 
 ---
 
@@ -792,20 +787,6 @@ docker run --rm \
 
 ---
 
-## 🤖 Maintenance Automation
-
-Repository maintenance is automated so the pinned toolchain and delivery inputs do not drift:
-
-- Dependabot opens daily pull requests for Go modules, GitHub Actions dependencies, and Docker inputs.
-- `go.mod` carries the preferred Go toolchain, and CI reads it directly with `actions/setup-go`.
-- `golangci-lint` is pinned in `.golangci-lint-version` so local lint runs and CI enforce the same formatter and linter behavior.
-- A scheduled workflow tracks the latest stable Go release from `go.dev` and the latest `golangci-lint` release and opens a pull request when those pins need to move forward.
-- After `Build and Validate` succeeds, eligible Dependabot pull requests are approved and squash-merged automatically.
-
-The GitHub Pages release hub is also generated from the latest stable release metadata so operators get copy-ready install commands, checksum links, release assets, and signed APT details from one place.
-
----
-
 ## 🛠️ Development
 
 Common targets:
@@ -833,9 +814,10 @@ make test
 make build
 ```
 
-`gofmt` remains the Go baseline. For the stricter, more product-grade equivalent of `black` plus `ruff` plus `pylint`, this repository standardises on pinned `golangci-lint` with `gofumpt`, `goimports`, `staticcheck`, `errcheck`, and `revive`.
+`gofmt` is the baseline formatter. The pinned `golangci-lint` configuration adds `gofumpt`, `goimports`, `staticcheck`, `errcheck`, and `revive`.
 
-Website validation follows the same principle: the Vite site is checked and built in CI so the published Pages artifact matches the local release hub preview flow.
+Use the website targets when changing the release hub so the local preview,
+metadata fallback, and production build stay aligned.
 
 `make build-release` produces release archives in `dist/release/` for:
 
@@ -849,29 +831,21 @@ The Linux binaries are built with `CGO_ENABLED=0`, so releases are architecture-
 
 ---
 
-## 🚢 Release Automation
+## 🚢 Release Process
 
-This repository includes:
+Stable releases are published only after the project passes validation for
+formatting, linting, vetting, tests, build output, packaging, website assets,
+and CLI smoke checks.
 
-- validation CI for formatting, vetting, tests, build output, and CLI smoke checks
-- automated release-candidate creation after successful `main` validation
-- manual promotion from a validated `vX.Y.Z-rc.N` tag to the matching stable tag
-- multi-arch container validation and GHCR publishing
-- tag-driven release builds for `linux/amd64`, `linux/arm64`, `linux/arm/v7`, `darwin/amd64`, and `darwin/arm64`
-- Debian package publication for `amd64`, `arm64`, and `armhf`
-- GitHub Pages release site publication with installer metadata
-- signed APT repository publication when signing secrets are configured
-- release drafter, labels, and dependency automation
+Release candidates use tags such as `v1.2.3-rc.1` while a version is being
+validated. Production installs should use the latest stable release unless you
+are intentionally testing a candidate build.
 
-Release tags are calculated from conventional commit subjects by
-`scripts/next-release.sh`. `feat:` creates a minor release, breaking changes
-create a major release, and `fix:`, `perf:`, `deps:`, `packaging:`,
-`container:`, or `release:` create a patch release. Documentation, CI, tests,
-and maintenance commits can still appear in release notes when they ship with
-operator-facing work, but they do not create a release by themselves.
+Stable releases publish:
 
-The automated release workflow requires a `RELEASE_AUTOMATION_TOKEN` repository
-secret with permission to push tags and trigger workflows. Without it, the
-workflow records a skip summary instead of creating tags. The APT repository
-path also requires `APT_GPG_PRIVATE_KEY`, `APT_GPG_KEY_ID`, and optionally
-`APT_GPG_PASSPHRASE`.
+- Linux and macOS archives for `amd64`, `arm64`, and Linux `arm/v7`
+- Debian packages for `amd64`, `arm64`, and `armhf`
+- a `SHA256SUMS` checksum file
+- GHCR images for the stable version, `latest`, and semver convenience tags
+- the GitHub Pages release hub with current installer and asset metadata
+- signed APT repository metadata for the stable channel
