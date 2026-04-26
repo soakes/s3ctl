@@ -24,6 +24,9 @@
         "action": "publicCloudProject:apiovh:user/get"
       },
       {
+        "action": "publicCloudProject:apiovh:user/policy/create"
+      },
+      {
         "action": "publicCloudProject:apiovh:user/s3Credentials/create"
       },
       {

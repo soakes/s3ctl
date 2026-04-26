@@ -118,6 +118,113 @@ func withMockOVHClient(t *testing.T, client *mockOVHClient) {
 	})
 }
 
+func assertOVHUserS3PolicyScopedToBucket(t *testing.T, policy, bucket string, deniedBuckets []string) {
+	t.Helper()
+
+	var document ovhUserS3PolicyDocument
+	if err := json.Unmarshal([]byte(policy), &document); err != nil {
+		t.Fatalf("json.Unmarshal policy returned error: %v\npolicy: %s", err, policy)
+	}
+
+	bucketARN := "arn:aws:s3:::" + bucket
+	objectARN := bucketARN + "/*"
+	hasListAllDeny := false
+	hasScopedAllow := false
+	for _, statement := range document.Statement {
+		if statement.Effect == "Deny" && containsString(statement.Action, "s3:ListAllMyBuckets") && containsString(statement.Resource, "*") {
+			hasListAllDeny = true
+		}
+		if statement.Effect != "Allow" {
+			continue
+		}
+		if containsString(statement.Resource, bucketARN) && containsString(statement.Resource, objectARN) {
+			hasScopedAllow = true
+		}
+		for _, resource := range statement.Resource {
+			if resource != bucketARN && resource != objectARN {
+				t.Fatalf("expected allow resources to stay scoped to %q, got policy %s", bucket, policy)
+			}
+		}
+	}
+	if !hasListAllDeny {
+		t.Fatalf("expected policy to deny s3:ListAllMyBuckets, got %s", policy)
+	}
+	if !hasScopedAllow {
+		t.Fatalf("expected policy to allow only bucket %q resources, got %s", bucket, policy)
+	}
+
+	for _, deniedBucket := range deniedBuckets {
+		deniedBucketARN := "arn:aws:s3:::" + deniedBucket
+		deniedObjectARN := deniedBucketARN + "/*"
+		if !ovhPolicyDeniesResource(document, deniedBucketARN) || !ovhPolicyDeniesResource(document, deniedObjectARN) {
+			t.Fatalf("expected policy to deny other bucket %q, got %s", deniedBucket, policy)
+		}
+	}
+}
+
+func ovhPolicyDeniesResource(document ovhUserS3PolicyDocument, resource string) bool {
+	for _, statement := range document.Statement {
+		if statement.Effect == "Deny" && containsString(statement.Action, "s3:*") && containsString(statement.Resource, resource) {
+			return true
+		}
+	}
+	return false
+}
+
+func ovhPolicyDeniesActionOnResource(document ovhUserS3PolicyDocument, action, resource string) bool {
+	for _, statement := range document.Statement {
+		if statement.Effect != "Deny" || !containsString(statement.Resource, resource) {
+			continue
+		}
+		if containsString(statement.Action, action) || containsString(statement.Action, "s3:*") {
+			return true
+		}
+	}
+	return false
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}
+
+func TestBuildOVHUserS3PolicyScopesAccessToOneBucket(t *testing.T) {
+	policy, err := buildOVHUserS3Policy("netspeedy-archives", "readWrite", []string{
+		"jellyfin-k8s-data-backup-sshn",
+		"radarr-k8s-data-backup-sshn",
+	})
+	if err != nil {
+		t.Fatalf("buildOVHUserS3Policy returned error: %v", err)
+	}
+
+	assertOVHUserS3PolicyScopedToBucket(t, policy, "netspeedy-archives", []string{
+		"jellyfin-k8s-data-backup-sshn",
+		"radarr-k8s-data-backup-sshn",
+	})
+}
+
+func TestBuildOVHUserS3PolicyReadOnlyDeniesWritesOnOwnedBucket(t *testing.T) {
+	policy, err := buildOVHUserS3Policy("app-data", "readOnly", nil)
+	if err != nil {
+		t.Fatalf("buildOVHUserS3Policy returned error: %v", err)
+	}
+
+	var document ovhUserS3PolicyDocument
+	if err := json.Unmarshal([]byte(policy), &document); err != nil {
+		t.Fatalf("json.Unmarshal policy returned error: %v", err)
+	}
+	if !ovhPolicyDeniesActionOnResource(document, "s3:PutObject", "arn:aws:s3:::app-data/*") {
+		t.Fatalf("expected read-only policy to explicitly deny object writes for the owned bucket, got %s", policy)
+	}
+	if !ovhPolicyDeniesActionOnResource(document, "s3:DeleteObject", "arn:aws:s3:::app-data/*") {
+		t.Fatalf("expected read-only policy to explicitly deny object deletes for the owned bucket, got %s", policy)
+	}
+}
+
 func TestProvisionWithOVHCreatesUserCredentialsContainerAndPolicy(t *testing.T) {
 	client := &mockOVHClient{}
 	withMockOVHClient(t, client)
@@ -169,9 +276,10 @@ func TestProvisionWithOVHCreatesUserCredentialsContainerAndPolicy(t *testing.T) 
 	}
 	wantPaths := []string{
 		"POST /cloud/project/project123/user",
-		"POST /cloud/project/project123/user/1234/s3Credentials",
 		"POST /cloud/project/project123/region/GRA/storage",
 		"POST /cloud/project/project123/region/GRA/storage/app-data/policy/1234",
+		"POST /cloud/project/project123/user/1234/policy",
+		"POST /cloud/project/project123/user/1234/s3Credentials",
 	}
 	if !reflect.DeepEqual(gotPaths, wantPaths) {
 		t.Fatalf("unexpected OVH API calls:\nwant %#v\ngot  %#v", wantPaths, gotPaths)
@@ -188,9 +296,9 @@ func TestProvisionWithOVHCreatesUserCredentialsContainerAndPolicy(t *testing.T) 
 		t.Fatalf("expected OVH user description to match bucket name, got %q", userBody.Description)
 	}
 
-	containerBody, ok := client.calls[2].Body.(ovhStorageContainerCreation)
+	containerBody, ok := client.calls[1].Body.(ovhStorageContainerCreation)
 	if !ok {
-		t.Fatalf("unexpected container body type: %#v", client.calls[2].Body)
+		t.Fatalf("unexpected container body type: %#v", client.calls[1].Body)
 	}
 	if containerBody.Name != "app-data" || containerBody.OwnerID != 1234 {
 		t.Fatalf("unexpected container body: %#v", containerBody)
@@ -205,13 +313,18 @@ func TestProvisionWithOVHCreatesUserCredentialsContainerAndPolicy(t *testing.T) 
 		t.Fatalf("expected enabled OVH encryption, got %#v", containerBody.Encryption)
 	}
 
-	policyBody, ok := client.calls[3].Body.(ovhAddContainerPolicy)
+	policyBody, ok := client.calls[2].Body.(ovhAddContainerPolicy)
 	if !ok {
-		t.Fatalf("unexpected policy body type: %#v", client.calls[3].Body)
+		t.Fatalf("unexpected policy body type: %#v", client.calls[2].Body)
 	}
 	if policyBody.RoleName != defaultOVHStoragePolicyRole {
 		t.Fatalf("unexpected OVH policy body: %#v", policyBody)
 	}
+	userPolicyBody, ok := client.calls[3].Body.(ovhUserS3PolicyUpdate)
+	if !ok {
+		t.Fatalf("unexpected user policy body type: %#v", client.calls[3].Body)
+	}
+	assertOVHUserS3PolicyScopedToBucket(t, userPolicyBody.Policy, "app-data", nil)
 }
 
 func TestProvisionWithOVHAppliesConfiguredContainerTags(t *testing.T) {
@@ -234,9 +347,9 @@ func TestProvisionWithOVHAppliesConfiguredContainerTags(t *testing.T) {
 		t.Fatalf("provision returned error: %v", err)
 	}
 
-	containerBody, ok := client.calls[2].Body.(ovhStorageContainerCreation)
+	containerBody, ok := client.calls[1].Body.(ovhStorageContainerCreation)
 	if !ok {
-		t.Fatalf("unexpected container body type: %#v", client.calls[2].Body)
+		t.Fatalf("unexpected container body type: %#v", client.calls[1].Body)
 	}
 	wantTags := map[string]string{
 		"environment": "prod",
@@ -267,6 +380,71 @@ func TestProvisionWithOVHDryRunPlansCredentials(t *testing.T) {
 	if credentials.Provider != providerOVH || credentials.AccessKeyID != generatedOnApply {
 		t.Fatalf("unexpected dry-run credentials: %#v", credentials)
 	}
+}
+
+func TestProvisionWithOVHRepairsPoliciesForExistingBucket(t *testing.T) {
+	client := &mockOVHClient{
+		containersByPath: map[string]ovhStorageContainer{
+			"/cloud/project/project123/region/GRA/storage/netspeedy-archives": {Name: "netspeedy-archives", OwnerID: 1234},
+			"/cloud/project/project123/region/GRA/storage/radarr-k8s-data-backup-sshn": {
+				Name:    "radarr-k8s-data-backup-sshn",
+				OwnerID: 5678,
+			},
+		},
+		getUserByPath: map[string]ovhUserDetail{
+			"/cloud/project/project123/user/1234": {ID: 1234, Description: "netspeedy-archives", Username: "user-abcd", Status: "ok"},
+			"/cloud/project/project123/user/5678": {
+				ID:          5678,
+				Description: "radarr-k8s-data-backup-sshn",
+				Username:    "user-efgh",
+				Status:      "ok",
+			},
+		},
+	}
+	withMockOVHClient(t, client)
+
+	result, err := provision(context.Background(), settings{
+		Provider:             providerOVH,
+		Buckets:              []string{"netspeedy-archives", "radarr-k8s-data-backup-sshn"},
+		Region:               "GRA",
+		OVHServiceName:       "project123",
+		OVHUserRole:          defaultOVHUserRole,
+		OVHStoragePolicyRole: defaultOVHStoragePolicyRole,
+		OVHRepairPolicies:    true,
+	})
+	if err != nil {
+		t.Fatalf("provision returned error: %v", err)
+	}
+	if result.Operation != operationRepair {
+		t.Fatalf("expected repair operation, got %q", result.Operation)
+	}
+	if !result.Resources[0].AccessPolicyApplied {
+		t.Fatalf("expected access policy repair result, got %#v", result.Resources[0])
+	}
+
+	gotPaths := make([]string, 0, len(client.calls))
+	for _, call := range client.calls {
+		gotPaths = append(gotPaths, call.Method+" "+call.Path)
+	}
+	wantPaths := []string{
+		"GET /cloud/project/project123/region/GRA/storage/netspeedy-archives",
+		"GET /cloud/project/project123/user/1234",
+		"POST /cloud/project/project123/region/GRA/storage/netspeedy-archives/policy/1234",
+		"POST /cloud/project/project123/user/1234/policy",
+		"GET /cloud/project/project123/region/GRA/storage/radarr-k8s-data-backup-sshn",
+		"GET /cloud/project/project123/user/5678",
+		"POST /cloud/project/project123/region/GRA/storage/radarr-k8s-data-backup-sshn/policy/5678",
+		"POST /cloud/project/project123/user/5678/policy",
+	}
+	if !reflect.DeepEqual(gotPaths, wantPaths) {
+		t.Fatalf("unexpected OVH API calls:\nwant %#v\ngot  %#v", wantPaths, gotPaths)
+	}
+
+	userPolicyBody, ok := client.calls[3].Body.(ovhUserS3PolicyUpdate)
+	if !ok {
+		t.Fatalf("unexpected user policy body type: %#v", client.calls[3].Body)
+	}
+	assertOVHUserS3PolicyScopedToBucket(t, userPolicyBody.Policy, "netspeedy-archives", []string{"radarr-k8s-data-backup-sshn"})
 }
 
 func TestProvisionWithOVHRotatesCredentialsByContainerOwner(t *testing.T) {
@@ -320,6 +498,8 @@ func TestProvisionWithOVHRotatesCredentialsByContainerOwner(t *testing.T) {
 	wantPaths := []string{
 		"GET /cloud/project/project123/region/GRA/storage/app-data",
 		"GET /cloud/project/project123/user/1234",
+		"POST /cloud/project/project123/region/GRA/storage/app-data/policy/1234",
+		"POST /cloud/project/project123/user/1234/policy",
 		"GET /cloud/project/project123/user/1234/s3Credentials",
 		"POST /cloud/project/project123/user/1234/s3Credentials",
 		"DELETE /cloud/project/project123/user/1234/s3Credentials/OLDACCESS1",
@@ -719,9 +899,10 @@ func TestProvisionWithOVHUppercasesAPIRegionButKeepsLowercaseEndpoint(t *testing
 	}
 	wantPaths := []string{
 		"POST /cloud/project/project123/user",
-		"POST /cloud/project/project123/user/1234/s3Credentials",
 		"POST /cloud/project/project123/region/UK/storage",
 		"POST /cloud/project/project123/region/UK/storage/app-data/policy/1234",
+		"POST /cloud/project/project123/user/1234/policy",
+		"POST /cloud/project/project123/user/1234/s3Credentials",
 	}
 	if !reflect.DeepEqual(gotPaths, wantPaths) {
 		t.Fatalf("unexpected OVH API calls:\nwant %#v\ngot  %#v", wantPaths, gotPaths)
@@ -746,9 +927,9 @@ func TestProvisionWithOVHCanExplicitlyDisableEncryption(t *testing.T) {
 		t.Fatalf("provision returned error: %v", err)
 	}
 
-	containerBody, ok := client.calls[2].Body.(ovhStorageContainerCreation)
+	containerBody, ok := client.calls[1].Body.(ovhStorageContainerCreation)
 	if !ok {
-		t.Fatalf("unexpected container body type: %#v", client.calls[2].Body)
+		t.Fatalf("unexpected container body type: %#v", client.calls[1].Body)
 	}
 	if containerBody.Encryption == nil || containerBody.Encryption.SSEAlgorithm != ovhStorageEncryptionPlaintext {
 		t.Fatalf("expected plaintext OVH encryption setting, got %#v", containerBody.Encryption)
@@ -783,9 +964,10 @@ func TestProvisionWithOVHWaitsForUserReadyBeforeCredentials(t *testing.T) {
 	wantPaths := []string{
 		"POST /cloud/project/project123/user",
 		"GET /cloud/project/project123/user/1234",
-		"POST /cloud/project/project123/user/1234/s3Credentials",
 		"POST /cloud/project/project123/region/GRA/storage",
 		"POST /cloud/project/project123/region/GRA/storage/app-data/policy/1234",
+		"POST /cloud/project/project123/user/1234/policy",
+		"POST /cloud/project/project123/user/1234/s3Credentials",
 	}
 	if !reflect.DeepEqual(gotPaths, wantPaths) {
 		t.Fatalf("unexpected OVH API calls:\nwant %#v\ngot  %#v", wantPaths, gotPaths)
@@ -822,7 +1004,6 @@ func TestProvisionWithOVHCleansUpCreatedResourcesWhenPolicyFails(t *testing.T) {
 	}
 	for _, want := range []string{
 		"DELETE /cloud/project/project123/region/GRA/storage/app-data",
-		"DELETE /cloud/project/project123/user/1234/s3Credentials/OVHACCESS",
 		"DELETE /cloud/project/project123/user/1234",
 	} {
 		found := false

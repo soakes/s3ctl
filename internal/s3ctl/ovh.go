@@ -2,6 +2,7 @@ package s3ctl
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -19,6 +20,69 @@ const (
 	ovhStorageEncryptionPlaintext       = "plaintext"
 	ovhUserReadyPollPeriod              = 2 * time.Second
 )
+
+var ovhS3PolicyReadActions = []string{
+	"s3:GetBucketLocation",
+	"s3:GetObject",
+	"s3:ListBucket",
+	"s3:ListBucketMultipartUploads",
+	"s3:ListMultipartUploadParts",
+}
+
+var ovhS3PolicyObjectWriteActions = []string{
+	"s3:AbortMultipartUpload",
+	"s3:DeleteObject",
+	"s3:PutObject",
+}
+
+var ovhS3PolicyScopedActions = []string{
+	"s3:AbortMultipartUpload",
+	"s3:BypassGovernanceRetention",
+	"s3:CreateBucket",
+	"s3:DeleteBucket",
+	"s3:DeleteBucketTagging",
+	"s3:DeleteBucketWebsite",
+	"s3:DeleteIntelligentTieringConfiguration",
+	"s3:DeleteObject",
+	"s3:DeleteObjectTagging",
+	"s3:GetBucketAcl",
+	"s3:GetBucketCORS",
+	"s3:GetBucketLocation",
+	"s3:GetBucketLogging",
+	"s3:GetBucketObjectLockConfiguration",
+	"s3:GetBucketTagging",
+	"s3:GetBucketVersioning",
+	"s3:GetBucketWebsite",
+	"s3:GetEncryptionConfiguration",
+	"s3:GetIntelligentTieringConfiguration",
+	"s3:GetLifecycleConfiguration",
+	"s3:GetObject",
+	"s3:GetObjectAcl",
+	"s3:GetObjectLegalHold",
+	"s3:GetObjectRetention",
+	"s3:GetObjectTagging",
+	"s3:GetReplicationConfiguration",
+	"s3:ListBucket",
+	"s3:ListBucketMultipartUploads",
+	"s3:ListBucketVersions",
+	"s3:ListMultipartUploadParts",
+	"s3:PutBucketAcl",
+	"s3:PutBucketCORS",
+	"s3:PutBucketLogging",
+	"s3:PutBucketObjectLockConfiguration",
+	"s3:PutBucketTagging",
+	"s3:PutBucketVersioning",
+	"s3:PutBucketWebsite",
+	"s3:PutEncryptionConfiguration",
+	"s3:PutIntelligentTieringConfiguration",
+	"s3:PutLifecycleConfiguration",
+	"s3:PutObject",
+	"s3:PutObjectAcl",
+	"s3:PutObjectLegalHold",
+	"s3:PutObjectRetention",
+	"s3:PutObjectTagging",
+	"s3:PutReplicationConfiguration",
+}
 
 var newOVHAPIClient = newOVHClient
 
@@ -73,6 +137,21 @@ type ovhStorageContainer struct {
 
 type ovhAddContainerPolicy struct {
 	RoleName string `json:"roleName"`
+}
+
+type ovhUserS3PolicyUpdate struct {
+	Policy string `json:"policy"`
+}
+
+type ovhUserS3PolicyDocument struct {
+	Statement []ovhUserS3PolicyStatement `json:"Statement"`
+}
+
+type ovhUserS3PolicyStatement struct {
+	Sid      string   `json:"Sid,omitempty"`
+	Effect   string   `json:"Effect"`
+	Action   []string `json:"Action"`
+	Resource []string `json:"Resource"`
 }
 
 func validateOVHSettings(cfg settings) error {
@@ -168,6 +247,9 @@ func provisionWithOVH(ctx context.Context, cfg settings, targets []provisionTarg
 	if cfg.OVHRotateCredentials {
 		return rotateOVHCredentials(ctx, cfg, targets, result, client, endpoint)
 	}
+	if cfg.OVHRepairPolicies {
+		return repairOVHPolicies(ctx, cfg, targets, result, client, endpoint)
+	}
 
 	for _, target := range targets {
 		resource := resourceResult{
@@ -180,6 +262,7 @@ func provisionWithOVH(ctx context.Context, cfg settings, targets []provisionTarg
 			resource.Created = true
 			resource.VersioningEnabled = target.EnableVersioning
 			resource.EncryptionEnabled = cfg.OVHEncryptData
+			resource.AccessPolicyApplied = true
 			resource.ScopedCredentials = &scopedCredentialResult{
 				Provider:        providerOVH,
 				UserID:          generatedOnApply,
@@ -198,14 +281,8 @@ func provisionWithOVH(ctx context.Context, cfg settings, targets []provisionTarg
 		}
 		userID := strconv.FormatInt(user.ID, 10)
 
-		credentials, err := createOVHS3Credentials(ctx, client, cfg, user.ID, target.Bucket)
-		if err != nil {
-			return provisionResult{}, wrapCleanupError(err, cleanupOVHUser(ctx, client, cfg, user.ID))
-		}
-
 		if err := createOVHContainer(ctx, client, cfg, target, user.ID); err != nil {
-			cleanupErr := cleanupOVHUserAndCredentials(ctx, client, cfg, user.ID, credentials.Access)
-			return provisionResult{}, wrapCleanupError(err, cleanupErr)
+			return provisionResult{}, wrapCleanupError(err, cleanupOVHUser(ctx, client, cfg, user.ID))
 		}
 		resource.Created = true
 		resource.VersioningEnabled = target.EnableVersioning
@@ -214,7 +291,24 @@ func provisionWithOVH(ctx context.Context, cfg settings, targets []provisionTarg
 		if err := attachOVHContainerPolicy(ctx, client, cfg, target.Bucket, userID); err != nil {
 			cleanupErr := errors.Join(
 				cleanupOVHContainer(ctx, client, cfg, target.Bucket),
-				cleanupOVHUserAndCredentials(ctx, client, cfg, user.ID, credentials.Access),
+				cleanupOVHUser(ctx, client, cfg, user.ID),
+			)
+			return provisionResult{}, wrapCleanupError(err, cleanupErr)
+		}
+		if err := applyOVHUserS3Policy(ctx, client, cfg, target.Bucket, user.ID, otherOVHTargetBuckets(targets, target.Bucket)); err != nil {
+			cleanupErr := errors.Join(
+				cleanupOVHContainer(ctx, client, cfg, target.Bucket),
+				cleanupOVHUser(ctx, client, cfg, user.ID),
+			)
+			return provisionResult{}, wrapCleanupError(err, cleanupErr)
+		}
+		resource.AccessPolicyApplied = true
+
+		credentials, err := createOVHS3Credentials(ctx, client, cfg, user.ID, target.Bucket)
+		if err != nil {
+			cleanupErr := errors.Join(
+				cleanupOVHContainer(ctx, client, cfg, target.Bucket),
+				cleanupOVHUser(ctx, client, cfg, user.ID),
 			)
 			return provisionResult{}, wrapCleanupError(err, cleanupErr)
 		}
@@ -227,6 +321,44 @@ func provisionWithOVH(ctx context.Context, cfg settings, targets []provisionTarg
 			AccessKeyID:     credentials.Access,
 			SecretAccessKey: credentials.Secret,
 		}
+
+		result.Resources = append(result.Resources, resource)
+	}
+
+	return result, nil
+}
+
+func repairOVHPolicies(ctx context.Context, cfg settings, targets []provisionTarget, result provisionResult, client ovhAPI, endpoint string) (provisionResult, error) {
+	for _, target := range targets {
+		resource := resourceResult{
+			BucketName: target.Bucket,
+			Endpoint:   endpoint,
+			Region:     cfg.Region,
+		}
+
+		if cfg.DryRun {
+			resource.AccessPolicyApplied = true
+			result.Resources = append(result.Resources, resource)
+			continue
+		}
+
+		user, err := findOVHBucketUser(ctx, client, cfg, target.Bucket)
+		if err != nil {
+			return provisionResult{}, err
+		}
+		user, err = waitForOVHUserReady(ctx, client, cfg, user)
+		if err != nil {
+			return provisionResult{}, fmt.Errorf("failed waiting for OVH user %d for bucket %q before policy repair: %w", user.ID, target.Bucket, err)
+		}
+
+		userID := strconv.FormatInt(user.ID, 10)
+		if err := attachOVHContainerPolicy(ctx, client, cfg, target.Bucket, userID); err != nil {
+			return provisionResult{}, err
+		}
+		if err := applyOVHUserS3Policy(ctx, client, cfg, target.Bucket, user.ID, otherOVHTargetBuckets(targets, target.Bucket)); err != nil {
+			return provisionResult{}, err
+		}
+		resource.AccessPolicyApplied = true
 
 		result.Resources = append(result.Resources, resource)
 	}
@@ -362,6 +494,7 @@ func rotateOVHCredentials(ctx context.Context, cfg settings, targets []provision
 		}
 
 		if cfg.DryRun {
+			resource.AccessPolicyApplied = true
 			resource.ScopedCredentials = &scopedCredentialResult{
 				Provider:        providerOVH,
 				UserID:          generatedOnApply,
@@ -374,12 +507,13 @@ func rotateOVHCredentials(ctx context.Context, cfg settings, targets []provision
 			continue
 		}
 
-		credentials, user, deleted, warnings, err := rotateOVHBucketCredentials(ctx, client, cfg, target.Bucket)
+		credentials, user, deleted, warnings, err := rotateOVHBucketCredentials(ctx, client, cfg, target.Bucket, otherOVHTargetBuckets(targets, target.Bucket))
 		if err != nil {
 			return provisionResult{}, err
 		}
 
 		resource.CredentialsDeleted = deleted
+		resource.AccessPolicyApplied = true
 		resource.Warnings = warnings
 		resource.ScopedCredentials = &scopedCredentialResult{
 			Provider:        providerOVH,
@@ -396,7 +530,7 @@ func rotateOVHCredentials(ctx context.Context, cfg settings, targets []provision
 	return result, nil
 }
 
-func rotateOVHBucketCredentials(ctx context.Context, client ovhAPI, cfg settings, bucket string) (ovhS3CredentialsWithSecret, ovhUserDetail, int, []string, error) {
+func rotateOVHBucketCredentials(ctx context.Context, client ovhAPI, cfg settings, bucket string, deniedBuckets []string) (ovhS3CredentialsWithSecret, ovhUserDetail, int, []string, error) {
 	user, err := findOVHBucketUser(ctx, client, cfg, bucket)
 	if err != nil {
 		return ovhS3CredentialsWithSecret{}, ovhUserDetail{}, 0, nil, err
@@ -404,6 +538,14 @@ func rotateOVHBucketCredentials(ctx context.Context, client ovhAPI, cfg settings
 	user, err = waitForOVHUserReady(ctx, client, cfg, user)
 	if err != nil {
 		return ovhS3CredentialsWithSecret{}, ovhUserDetail{}, 0, nil, fmt.Errorf("failed waiting for OVH user %d for bucket %q to become ready: %w", user.ID, bucket, err)
+	}
+
+	userID := strconv.FormatInt(user.ID, 10)
+	if err := attachOVHContainerPolicy(ctx, client, cfg, bucket, userID); err != nil {
+		return ovhS3CredentialsWithSecret{}, ovhUserDetail{}, 0, nil, err
+	}
+	if err := applyOVHUserS3Policy(ctx, client, cfg, bucket, user.ID, deniedBuckets); err != nil {
+		return ovhS3CredentialsWithSecret{}, ovhUserDetail{}, 0, nil, err
 	}
 
 	existing, err := listOVHS3Credentials(ctx, client, cfg, user.ID, bucket)
@@ -721,11 +863,150 @@ func attachOVHContainerPolicy(ctx context.Context, client ovhAPI, cfg settings, 
 	return nil
 }
 
-func cleanupOVHUserAndCredentials(ctx context.Context, client ovhAPI, cfg settings, userID int64, accessKey string) error {
-	return errors.Join(
-		cleanupOVHS3Credentials(ctx, client, cfg, userID, accessKey),
-		cleanupOVHUser(ctx, client, cfg, userID),
-	)
+func applyOVHUserS3Policy(ctx context.Context, client ovhAPI, cfg settings, bucket string, userID int64, deniedBuckets []string) error {
+	role := normalizeOVHStoragePolicyRole(cfg.OVHStoragePolicyRole)
+	policy, err := buildOVHUserS3Policy(bucket, role, deniedBuckets)
+	if err != nil {
+		return err
+	}
+
+	body := ovhUserS3PolicyUpdate{Policy: policy}
+	path := ovhProjectPath(cfg, "user", strconv.FormatInt(userID, 10), "policy")
+	if err := client.PostWithContext(ctx, path, body, nil); err != nil {
+		return fmt.Errorf("failed to apply OVH S3 user policy %q for bucket %q to user %d: %w", role, bucket, userID, err)
+	}
+	return nil
+}
+
+func buildOVHUserS3Policy(bucket, role string, deniedBuckets []string) (string, error) {
+	bucketARN := fmt.Sprintf("arn:aws:s3:::%s", bucket)
+	objectARN := bucketARN + "/*"
+	bucketResources := []string{bucketARN, objectARN}
+
+	statements := []ovhUserS3PolicyStatement{
+		{
+			Sid:      "DenyListAllMyBuckets",
+			Effect:   "Deny",
+			Action:   []string{"s3:ListAllMyBuckets"},
+			Resource: []string{"*"},
+		},
+	}
+	if resources := ovhBucketARNs(deniedBuckets); len(resources) > 0 {
+		statements = append(statements, ovhUserS3PolicyStatement{
+			Sid:      "DenyOtherBuckets",
+			Effect:   "Deny",
+			Action:   []string{"s3:*"},
+			Resource: resources,
+		})
+	}
+
+	switch normalizeOVHStoragePolicyRole(role) {
+	case "admin":
+		statements = append(statements, ovhUserS3PolicyStatement{
+			Sid:      "AllowBucketAdmin",
+			Effect:   "Allow",
+			Action:   []string{"s3:*"},
+			Resource: bucketResources,
+		})
+	case "readWrite":
+		allowedActions := append([]string{}, ovhS3PolicyReadActions...)
+		allowedActions = append(allowedActions, ovhS3PolicyObjectWriteActions...)
+		statements = append(statements,
+			ovhUserS3PolicyStatement{
+				Sid:      "AllowBucketReadWrite",
+				Effect:   "Allow",
+				Action:   allowedActions,
+				Resource: bucketResources,
+			},
+			ovhUserS3PolicyStatement{
+				Sid:      "DenyBucketAdministration",
+				Effect:   "Deny",
+				Action:   deniedOVHUserS3Actions(allowedActions),
+				Resource: bucketResources,
+			},
+		)
+	case "readOnly":
+		statements = append(statements,
+			ovhUserS3PolicyStatement{
+				Sid:      "AllowBucketReadOnly",
+				Effect:   "Allow",
+				Action:   append([]string{}, ovhS3PolicyReadActions...),
+				Resource: bucketResources,
+			},
+			ovhUserS3PolicyStatement{
+				Sid:      "DenyBucketWrites",
+				Effect:   "Deny",
+				Action:   deniedOVHUserS3Actions(ovhS3PolicyReadActions),
+				Resource: bucketResources,
+			},
+		)
+	case "deny":
+		statements = append(statements, ovhUserS3PolicyStatement{
+			Sid:      "DenyBucketAccess",
+			Effect:   "Deny",
+			Action:   []string{"s3:*"},
+			Resource: bucketResources,
+		})
+	default:
+		return "", fmt.Errorf("unsupported OVH storage policy role %q", role)
+	}
+
+	document := ovhUserS3PolicyDocument{Statement: statements}
+	bytes, err := json.Marshal(document)
+	if err != nil {
+		return "", err
+	}
+	return string(bytes), nil
+}
+
+func otherOVHTargetBuckets(targets []provisionTarget, bucket string) []string {
+	otherBuckets := make([]string, 0, len(targets))
+	seen := make(map[string]struct{}, len(targets))
+	for _, target := range targets {
+		candidate := strings.TrimSpace(target.Bucket)
+		if candidate == "" || candidate == bucket {
+			continue
+		}
+		if _, ok := seen[candidate]; ok {
+			continue
+		}
+		seen[candidate] = struct{}{}
+		otherBuckets = append(otherBuckets, candidate)
+	}
+	return otherBuckets
+}
+
+func ovhBucketARNs(buckets []string) []string {
+	resources := make([]string, 0, len(buckets)*2)
+	seen := make(map[string]struct{}, len(buckets))
+	for _, bucket := range buckets {
+		bucket = strings.TrimSpace(bucket)
+		if bucket == "" {
+			continue
+		}
+		if _, ok := seen[bucket]; ok {
+			continue
+		}
+		seen[bucket] = struct{}{}
+		bucketARN := fmt.Sprintf("arn:aws:s3:::%s", bucket)
+		resources = append(resources, bucketARN, bucketARN+"/*")
+	}
+	return resources
+}
+
+func deniedOVHUserS3Actions(allowedActions []string) []string {
+	allowed := make(map[string]struct{}, len(allowedActions))
+	for _, action := range allowedActions {
+		allowed[action] = struct{}{}
+	}
+
+	denied := make([]string, 0, len(ovhS3PolicyScopedActions)-len(allowed))
+	for _, action := range ovhS3PolicyScopedActions {
+		if _, ok := allowed[action]; !ok {
+			denied = append(denied, action)
+		}
+	}
+	return denied
 }
 
 func cleanupOVHS3Credentials(ctx context.Context, client ovhAPI, cfg settings, userID int64, accessKey string) error {

@@ -86,6 +86,7 @@ flowchart LR
 - **Scoped credentials**: creates bucket-specific IAM-style users and access keys
 - **OVHcloud support**: creates containers, Public Cloud users, S3 keys, policies, and optional encryption
 - **Credential rotation**: rotates OVHcloud S3 keypairs by bucket/user name
+- **OVHcloud policy repair**: reapplies scoped S3 user policies to existing bucket users
 - **Safe deletion**: deletes empty buckets without `--force` and requires `--force` for non-empty buckets
 - **JSON output**: emits success and error payloads for machine workflows
 - **Install options**: provides release archives, Debian packages, a signed APT repository, and GHCR images
@@ -149,6 +150,16 @@ s3ctl \
   --provider ovh \
   --bucket app-data \
   --ovh-rotate-credentials \
+  --output json
+```
+
+Repair OVHcloud bucket scoping for an existing bucket user:
+
+```bash
+s3ctl \
+  --provider ovh \
+  --bucket app-data \
+  --ovh-repair-policies \
   --output json
 ```
 
@@ -563,10 +574,22 @@ API. OVHcloud calls buckets "containers"; `s3ctl` keeps the CLI wording as
 bucket because the resulting credentials are S3-compatible.
 
 The OVHcloud provider creates one Public Cloud user and one S3 credential pair
-per bucket, creates the container in `--region`, and attaches the user to that
-container with `--ovh-storage-policy-role` (`readWrite` by default). It does not
-apply S3 bucket policy documents; access is controlled through OVHcloud
-container policies.
+per bucket, creates the container in `--region`, attaches the user to that
+container with `--ovh-storage-policy-role` (`readWrite` by default), and imports
+an OVHcloud S3 user policy scoped to that bucket. It does not apply S3 bucket
+policy documents; access is controlled through OVHcloud container profiles and
+S3 user policies.
+
+The generated OVHcloud user policy denies `s3:ListAllMyBuckets` so a bucket key
+cannot enumerate every bucket in the project. Use `mc ls alias/bucket-name` to
+list objects in the bucket. Bare `mc ls alias` uses the S3 account-level bucket
+listing API, which OVHcloud documents as all-buckets or denied rather than a
+reliable single-bucket filtered result.
+
+For `readOnly` and `readWrite`, `s3ctl` also adds explicit deny statements for
+unsupported operations on the owned bucket. OVHcloud currently falls back to the
+bucket owner's ACL when a user policy has no matching allow or deny, so explicit
+denies are required for owner-scoped users.
 
 Required OVHcloud settings:
 
@@ -600,6 +623,9 @@ Optional OVHcloud settings:
 - `ovh_rotate_credentials`: set to `true` to rotate S3 credentials for the
   existing OVHcloud container owner instead of creating a new container. Keep it
   out of the normal provisioning config unless every run should be a rotation.
+- `ovh_repair_policies`: set to `true` to reapply the OVHcloud container
+  profile and S3 user policy for existing bucket owners without issuing new
+  credentials.
 
 ### 🔐 OVHcloud OAuth2 and IAM Setup
 
@@ -614,9 +640,12 @@ flowchart TD
   config --> run
   run --> user["Create bucket-dedicated Public Cloud user"]
   run --> bucket["Create Object Storage container in region"]
+  run --> userpolicy["Import bucket-scoped S3 user policy"]
   run --> keys["Create S3 access key and secret"]
   user --> policy["Attach container policy role"]
   bucket --> policy
+  policy --> userpolicy
+  userpolicy --> keys
   keys --> result["Return endpoint, region, and credentials"]
 ```
 
@@ -694,6 +723,7 @@ Least-privilege actions for `s3ctl`:
 - `publicCloudProject:apiovh:user/create`
 - `publicCloudProject:apiovh:user/delete`
 - `publicCloudProject:apiovh:user/get`
+- `publicCloudProject:apiovh:user/policy/create`
 - `publicCloudProject:apiovh:user/s3Credentials/create`
 - `publicCloudProject:apiovh:user/s3Credentials/delete`
 - `publicCloudProject:apiovh:user/s3Credentials/get`
@@ -761,11 +791,42 @@ If using JSON config for a rotation run:
 ```
 
 Rotation looks up the existing container by bucket name, reads its `ownerId`,
-creates a new S3 credential pair for that OVH Public Cloud user, then deletes
-the previous S3 credentials for that user. The new secret is only returned once,
-so store the command output securely. If an old key cannot be deleted after the
-new key is created, `s3ctl` still prints the new credentials and includes a
-warning so the stale key can be removed manually.
+reapplies the container profile and scoped S3 user policy, creates a new S3
+credential pair for that OVH Public Cloud user, then deletes the previous S3
+credentials for that user. The new secret is only returned once, so store the
+command output securely. If an old key cannot be deleted after the new key is
+created, `s3ctl` still prints the new credentials and includes a warning so the
+stale key can be removed manually.
+
+### 🛠️ OVHcloud Policy Repair
+
+Use `--ovh-repair-policies` or `"ovh_repair_policies": true` when buckets and
+keys already exist and you only need to reapply the scoped access policies:
+
+```bash
+s3ctl \
+  --provider ovh \
+  --bucket netspeedy-archives \
+  --ovh-repair-policies \
+  --output json
+```
+
+You can pass multiple `--bucket` values or a batch file to repair several
+bucket users in one run. The command finds each bucket's `ownerId`, verifies the
+owner still looks bucket-dedicated, reapplies the OVHcloud container profile,
+and imports a generated S3 user policy for that bucket. It does not create,
+delete, or rotate S3 access keys.
+
+For already exposed credentials, prefer rotation after policy repair so old keys
+that may have been copied elsewhere are removed:
+
+```bash
+s3ctl \
+  --provider ovh \
+  --bucket netspeedy-archives \
+  --ovh-rotate-credentials \
+  --output json
+```
 
 ### 🗑️ OVHcloud Bucket Deletion
 
@@ -786,11 +847,11 @@ user's S3 credentials and the OVH Public Cloud user. If the container is removed
 but a final credential/user cleanup call fails, the command prints a warning so
 the stale identity can be removed manually.
 
-For safety, OVHcloud delete and credential rotation only continue when the
-container owner looks bucket-dedicated: the OVH Public Cloud user description
-or username must match the bucket name, or the legacy description
-`s3ctl bucket <bucket>`. This prevents deleting all credentials from a shared
-manual OVH user.
+For safety, OVHcloud delete, credential rotation, and policy repair only
+continue when the container owner looks bucket-dedicated: the OVH Public Cloud
+user description or username must match the bucket name, or the legacy
+description `s3ctl bucket <bucket>`. This prevents managing credentials or
+policies on a shared manual OVH user.
 
 The application key, application secret, and consumer key flow is still
 supported as OVHcloud's classic API authentication path and can be used directly

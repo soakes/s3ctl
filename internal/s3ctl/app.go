@@ -37,6 +37,7 @@ const (
 	providerOVH                     = "ovh"
 	operationProvision              = "provision"
 	operationDelete                 = "delete"
+	operationRepair                 = "repair"
 	defaultProvider                 = providerS3
 	defaultRegion                   = "us-east-1"
 	defaultIAMUserPrefix            = ""
@@ -93,6 +94,7 @@ type settings struct {
 	OVHEncryptData           bool              `json:"ovh_encrypt_data"`
 	OVHEncryptDataSet        bool              `json:"-"`
 	OVHRotateCredentials     bool              `json:"ovh_rotate_credentials"`
+	OVHRepairPolicies        bool              `json:"ovh_repair_policies"`
 	OVHTags                  map[string]string `json:"ovh_tags"`
 	DeleteBucket             bool              `json:"delete_bucket"`
 	Force                    bool              `json:"force"`
@@ -135,6 +137,7 @@ type source struct {
 	OVHStoragePolicyRole     *string
 	OVHEncryptData           *bool
 	OVHRotateCredentials     *bool
+	OVHRepairPolicies        *bool
 	OVHTags                  *map[string]string
 	DeleteBucket             *bool
 	Force                    *bool
@@ -177,6 +180,7 @@ type cliFlags struct {
 	OVHStoragePolicyRole     string
 	OVHEncryptData           bool
 	OVHRotateCredentials     bool
+	OVHRepairPolicies        bool
 	OVHTags                  []string
 	DeleteBucket             bool
 	Force                    bool
@@ -240,6 +244,7 @@ type resourceResult struct {
 	BucketPolicySource  string                  `json:"bucket_policy_source,omitempty"`
 	CredentialsRotated  bool                    `json:"credentials_rotated,omitempty"`
 	CredentialsDeleted  int                     `json:"credentials_deleted,omitempty"`
+	AccessPolicyApplied bool                    `json:"access_policy_applied,omitempty"`
 	ScopedCredentials   *scopedCredentialResult `json:"scoped_credentials,omitempty"`
 	Warnings            []string                `json:"warnings,omitempty"`
 }
@@ -438,6 +443,8 @@ func operationFromSettings(cfg settings) string {
 	switch {
 	case cfg.DeleteBucket:
 		return operationDelete
+	case cfg.OVHRepairPolicies:
+		return operationRepair
 	default:
 		return operationProvision
 	}
@@ -526,6 +533,7 @@ func parseFlags(args []string) (parseResult, error) {
 			OVHStoragePolicyRole:     changedString(fs, "ovh-storage-policy-role", flags.OVHStoragePolicyRole),
 			OVHEncryptData:           changedBool(fs, "ovh-encrypt-data", flags.OVHEncryptData),
 			OVHRotateCredentials:     changedBool(fs, "ovh-rotate-credentials", flags.OVHRotateCredentials),
+			OVHRepairPolicies:        changedBool(fs, "ovh-repair-policies", flags.OVHRepairPolicies),
 			OVHTags:                  ovhTags,
 			DeleteBucket:             changedBool(fs, "delete", flags.DeleteBucket),
 			Force:                    changedBool(fs, "force", flags.Force),
@@ -577,6 +585,7 @@ func newFlagSet(flags *cliFlags) *pflag.FlagSet {
 	fs.StringVar(&flags.OVHStoragePolicyRole, "ovh-storage-policy-role", defaultOVHStoragePolicyRole, "OVHcloud container policy role: admin, deny, readOnly, or readWrite")
 	fs.BoolVar(&flags.OVHEncryptData, "ovh-encrypt-data", false, "Enable OVHcloud server-side encryption with OVH-managed keys")
 	fs.BoolVar(&flags.OVHRotateCredentials, "ovh-rotate-credentials", false, "Rotate existing OVHcloud S3 credentials for each bucket instead of creating containers")
+	fs.BoolVar(&flags.OVHRepairPolicies, "ovh-repair-policies", false, "Apply scoped OVHcloud S3 and container policies to existing bucket users without rotating credentials")
 	fs.StringArrayVar(&flags.OVHTags, "ovh-tag", nil, "Tag to apply to OVHcloud containers as key=value; may be specified more than once")
 	fs.BoolVar(&flags.DeleteBucket, "delete", false, "Delete each bucket instead of creating buckets")
 	fs.BoolVar(&flags.Force, "force", false, "Allow delete operations to remove bucket contents before deleting buckets")
@@ -661,6 +670,7 @@ OVHcloud options:
       --ovh-consumer-key KEY
       --ovh-encrypt-data
       --ovh-rotate-credentials
+      --ovh-repair-policies
       --ovh-tag KEY=VALUE
 
 Delete options:
@@ -689,6 +699,7 @@ Examples:
   %s --bucket app-data --endpoint https://objects.example.com --region us-east-1
   %s --provider ovh --bucket app-data --region GRA --ovh-service-name PROJECT_ID
   %s --provider ovh --bucket app-data --ovh-rotate-credentials --output json
+  %s --provider ovh --bucket app-data --ovh-repair-policies --output json
   %s --provider ovh --bucket app-data --delete
   %s --provider ovh --bucket app-data --delete --force
   %s --bucket app-data --create-scoped-credentials --credential-policy-template bucket-readwrite
@@ -698,7 +709,7 @@ Examples:
   %s --config ./examples/s3ctl.json --dry-run --output json
 
 Flags:
-`, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName)
+`, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName)
 	builder.WriteString(fs.FlagUsagesWrapped(100))
 
 	builder.WriteString(`
@@ -838,6 +849,7 @@ OVH bucket options:
       --ovh-storage-policy-role ROLE
       --ovh-encrypt-data
       --ovh-rotate-credentials
+      --ovh-repair-policies
       --ovh-tag KEY=VALUE
 
 Delete options:
@@ -869,6 +881,7 @@ func shouldShowBucketHelp(args []string) bool {
 		{name: "bucket-policy-template"},
 		{name: "create-scoped-credentials"},
 		{name: "ovh-rotate-credentials"},
+		{name: "ovh-repair-policies"},
 		{name: "ovh-tag"},
 	} {
 		if argHasFlag(args, flag.name, flag.shorthand) {
@@ -966,6 +979,7 @@ func loadConfig(path string) (source, error) {
 		OVHStoragePolicyRole:     stringPtrIfField(data, "ovh_storage_policy_role", cfg.OVHStoragePolicyRole),
 		OVHEncryptData:           boolPtrIfSet(data, "ovh_encrypt_data", cfg.OVHEncryptData),
 		OVHRotateCredentials:     boolPtrIfSet(data, "ovh_rotate_credentials", cfg.OVHRotateCredentials),
+		OVHRepairPolicies:        boolPtrIfSet(data, "ovh_repair_policies", cfg.OVHRepairPolicies),
 		OVHTags:                  stringMapPtrIfField(data, "ovh_tags", cfg.OVHTags),
 		DeleteBucket:             deleteBucket,
 		Force:                    boolPtrIfSet(data, "force", cfg.Force),
@@ -1092,6 +1106,9 @@ func mergeSources(sources ...source) settings {
 		if src.OVHRotateCredentials != nil {
 			cfg.OVHRotateCredentials = *src.OVHRotateCredentials
 		}
+		if src.OVHRepairPolicies != nil {
+			cfg.OVHRepairPolicies = *src.OVHRepairPolicies
+		}
 		if src.OVHTags != nil {
 			cfg.OVHTags = cloneStringMap(*src.OVHTags)
 		}
@@ -1135,6 +1152,9 @@ func validateSettings(cfg settings) error {
 	if cfg.OVHRotateCredentials && provider != providerOVH {
 		return errors.New("--ovh-rotate-credentials requires --provider ovh")
 	}
+	if cfg.OVHRepairPolicies && provider != providerOVH {
+		return errors.New("--ovh-repair-policies requires --provider ovh")
+	}
 	if len(cfg.OVHTags) > 0 && provider != providerOVH {
 		return errors.New("--ovh-tag and ovh_tags require --provider ovh")
 	}
@@ -1143,6 +1163,12 @@ func validateSettings(cfg settings) error {
 	}
 	if cfg.DeleteBucket && cfg.OVHRotateCredentials {
 		return errors.New("use either --delete or --ovh-rotate-credentials, not both")
+	}
+	if cfg.DeleteBucket && cfg.OVHRepairPolicies {
+		return errors.New("use either --delete or --ovh-repair-policies, not both")
+	}
+	if cfg.OVHRotateCredentials && cfg.OVHRepairPolicies {
+		return errors.New("use either --ovh-rotate-credentials or --ovh-repair-policies, not both")
 	}
 	if cfg.BucketPolicyFile != "" && cfg.BucketPolicyTemplate != "" {
 		return errors.New("use either --bucket-policy-file or --bucket-policy-template, not both")
@@ -1202,6 +1228,8 @@ func provision(ctx context.Context, cfg settings) (provisionResult, error) {
 	}
 	if cfg.DeleteBucket {
 		result.Operation = operationDelete
+	} else if cfg.OVHRepairPolicies {
+		result.Operation = operationRepair
 	}
 
 	if cfg.Provider == providerOVH {
@@ -1956,8 +1984,11 @@ func buildBucketPolicy(bucket, template string) (string, error) {
 
 func renderText(result provisionResult) string {
 	title := "S3 Provisioning Result"
-	if result.Operation == operationDelete {
+	switch result.Operation {
+	case operationDelete:
 		title = "S3 Delete Result"
+	case operationRepair:
+		title = "S3 Policy Repair Result"
 	}
 	lines := []string{
 		title,
@@ -1973,6 +2004,24 @@ func renderText(result provisionResult) string {
 	}
 
 	for _, resource := range result.Resources {
+		if result.Operation == operationRepair {
+			policyRepairLabel := "Access policies repaired"
+			if result.DryRun {
+				policyRepairLabel = "Access policy repair planned"
+			}
+			lines = append(lines,
+				"",
+				fmt.Sprintf("Bucket: %s", resource.BucketName),
+				fmt.Sprintf("Endpoint: %s", emptyFallback(resource.Endpoint, "(default AWS SDK resolution)")),
+				fmt.Sprintf("Region: %s", resource.Region),
+				fmt.Sprintf("%s: %s", policyRepairLabel, yesNo(resource.AccessPolicyApplied)),
+			)
+			for _, warning := range resource.Warnings {
+				lines = append(lines, fmt.Sprintf("Warning: %s", warning))
+			}
+			continue
+		}
+
 		if result.Operation == operationDelete {
 			bucketDeleteLabel := "Bucket deleted"
 			if result.DryRun {
