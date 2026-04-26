@@ -290,6 +290,7 @@ function renderAssetList(release) {
     ...assets.map((asset) => {
       const row = document.createElement("div");
       row.className = "asset-row";
+      row.dataset.kind = classifyAsset(asset.name);
 
       const link = document.createElement("a");
       link.href = asset.browser_download_url;
@@ -307,6 +308,7 @@ function renderAssetList(release) {
       return row;
     }),
   );
+  applyAssetFilter();
 }
 
 function renderCommands(metadata) {
@@ -530,8 +532,42 @@ async function loadMetadata() {
   }
 }
 
+function wireAssetFilters() {
+  const buttons = document.querySelectorAll(".asset-filter");
+
+  buttons.forEach((button) => {
+    button.addEventListener("click", () => {
+      buttons.forEach((b) => b.classList.remove("is-active"));
+      buttons.forEach((b) => b.setAttribute("aria-pressed", "false"));
+      button.classList.add("is-active");
+      button.setAttribute("aria-pressed", "true");
+
+      applyAssetFilter(button.dataset.filter);
+    });
+  });
+}
+
+function activeAssetFilter() {
+  return document.querySelector(".asset-filter.is-active")?.dataset.filter || "all";
+}
+
+function applyAssetFilter(filterType = activeAssetFilter()) {
+  const kindByFilter = {
+    archive: "Release archive",
+    checksum: "Checksums",
+    deb: "Debian package",
+  };
+
+  document.querySelectorAll(".asset-row").forEach((row) => {
+    const expectedKind = kindByFilter[filterType];
+    const show = filterType === "all" || row.dataset.kind === expectedKind;
+    row.hidden = !show;
+  });
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   wireCopyButtons();
+  wireAssetFilters();
   void loadMetadata();
 
   const observer = new IntersectionObserver(

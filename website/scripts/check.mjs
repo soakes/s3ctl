@@ -39,6 +39,7 @@ const requiredDOMIDs = [
   "container-command",
   "container-note",
   "asset-count",
+  "asset-filters",
   "asset-release-link",
   "asset-checksum-link",
   "asset-key-link",

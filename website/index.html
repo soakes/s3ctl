@@ -157,7 +157,7 @@
             </p>
           </article>
 
-          <article class="install-card install-card-wide install-card-wide-apt glass-card hover-lift">
+          <article class="install-card glass-card hover-lift">
             <div class="card-head flex j-between a-center">
               <h3>Signed APT repository</h3>
               <span class="badge primary-badge">Debian</span>
@@ -178,7 +178,7 @@
             <p class="card-note mono-note" id="apt-fingerprint-row"></p>
           </article>
 
-          <article class="install-card install-card-wide install-card-wide-ghcr glass-card hover-lift">
+          <article class="install-card glass-card hover-lift">
             <div class="card-head flex j-between a-center">
               <h3>GHCR runtime</h3>
               <span class="badge secondary-badge">Container</span>
@@ -214,14 +214,23 @@
             </div>
             <span class="asset-count" id="asset-count">No published assets yet</span>
           </div>
-          <div class="asset-links">
-            <a class="asset-link" id="asset-release-link" href="https://github.com/soakes/s3ctl/releases">Release page</a>
-            <a class="asset-link" id="asset-checksum-link" href="https://github.com/soakes/s3ctl/releases">Checksums</a>
-            <a class="asset-link" id="asset-key-link" href="./apt/s3ctl-archive-keyring.gpg">APT keyring</a>
-            <a class="asset-link" id="asset-key-asc-link" href="./apt/s3ctl-archive-keyring.asc">ASCII key</a>
+          <div class="asset-filters" id="asset-filters">
+            <button class="asset-filter is-active" type="button" data-filter="all" aria-pressed="true">All</button>
+            <button class="asset-filter" type="button" data-filter="archive" aria-pressed="false">Archives</button>
+            <button class="asset-filter" type="button" data-filter="deb" aria-pressed="false">Debian packages</button>
+            <button class="asset-filter" type="button" data-filter="checksum" aria-pressed="false">Checksums</button>
           </div>
           <div class="asset-list" id="asset-list">
             <div class="asset-empty">Publish a stable release to populate download links and package metadata.</div>
+          </div>
+          <div class="asset-meta-links">
+            <a class="meta-link" id="asset-release-link" href="https://github.com/soakes/s3ctl/releases">Release page</a>
+            <span class="meta-link-sep">&bull;</span>
+            <a class="meta-link" id="asset-checksum-link" href="https://github.com/soakes/s3ctl/releases">Checksums</a>
+            <span class="meta-link-sep">&bull;</span>
+            <a class="meta-link" id="asset-key-link" href="./apt/s3ctl-archive-keyring.gpg">APT keyring</a>
+            <span class="meta-link-sep">&bull;</span>
+            <a class="meta-link" id="asset-key-asc-link" href="./apt/s3ctl-archive-keyring.asc">ASCII key</a>
           </div>
         </div>
       </section>
