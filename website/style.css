@@ -682,6 +682,10 @@ section {
   transition: all 0.2s ease;
 }
 
+.asset-row[hidden] {
+  display: none !important;
+}
+
 .asset-row:hover {
   border-color: var(--border-glow);
   background: rgba(0, 240, 255, 0.05);

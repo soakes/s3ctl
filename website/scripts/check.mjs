@@ -82,6 +82,7 @@ function findRootRelativeLocalAssets(html) {
 
 const indexHTML = load("index.html");
 const mainJS = load("main.js");
+const styleCSS = load("style.css");
 const viteConfig = load("vite.config.js");
 
 for (const relativePath of requiredFiles) {
@@ -104,6 +105,11 @@ assert(
 assert(
   mainJS.includes('import "./style.css";') || mainJS.includes("import './style.css';"),
   "main.js must import ./style.css so Vite owns stylesheet output",
+);
+
+assert(
+  /\.asset-row\[hidden\]\s*{[^}]*display:\s*none\s*!important;[^}]*}/s.test(styleCSS),
+  "style.css must explicitly hide filtered asset rows with .asset-row[hidden]",
 );
 
 assert(
