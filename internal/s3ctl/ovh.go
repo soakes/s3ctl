@@ -250,6 +250,10 @@ func deleteOVHBuckets(ctx context.Context, cfg settings, targets []provisionTarg
 
 		user, err := findOVHBucketUser(ctx, client, cfg, target.Bucket)
 		if err != nil {
+			var notFound bucketNotFoundError
+			if errors.As(err, &notFound) {
+				return provisionResult{}, err
+			}
 			return provisionResult{}, fmt.Errorf("failed to find OVH user for bucket %q before delete: %w", target.Bucket, err)
 		}
 		user, err = waitForOVHUserReady(ctx, client, cfg, user)
@@ -541,6 +545,14 @@ func annotateOVHServiceNotFound(cfg settings, err error) error {
 	return fmt.Errorf("%w; OVH returned 404 for Public Cloud project %q on endpoint %q. Check ovh_service_name is the Public Cloud project ID, not the display name, and that the OAuth2 service account has an OVH IAM policy granting Public Cloud project API access to this project", err, cfg.OVHServiceName, endpoint)
 }
 
+func isOVHContainerNotFoundError(err error) bool {
+	var apiErr *ovhapi.APIError
+	if !errors.As(err, &apiErr) || apiErr.Code != http.StatusNotFound {
+		return false
+	}
+	return !strings.Contains(strings.ToLower(apiErr.Message), "service does not exist")
+}
+
 func findOVHBucketUser(ctx context.Context, client ovhAPI, cfg settings, bucket string) (ovhUserDetail, error) {
 	container, err := getOVHContainer(ctx, client, cfg, bucket)
 	if err == nil && container.OwnerID != 0 {
@@ -554,7 +566,16 @@ func findOVHBucketUser(ctx context.Context, client ovhAPI, cfg settings, bucket 
 		return user, nil
 	}
 	if err != nil {
-		return ovhUserDetail{}, fmt.Errorf("failed to look up OVH container %q: %w", bucket, err)
+		annotatedErr := annotateOVHServiceNotFound(cfg, err)
+		if isOVHContainerNotFoundError(annotatedErr) {
+			return ovhUserDetail{}, bucketNotFoundError{
+				Name:     bucket,
+				Provider: providerOVH,
+				Region:   cfg.Region,
+				Cause:    annotatedErr,
+			}
+		}
+		return ovhUserDetail{}, fmt.Errorf("failed to look up OVH container %q: %w", bucket, annotatedErr)
 	}
 
 	users, err := listOVHUsers(ctx, client, cfg)

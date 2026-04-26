@@ -1,7 +1,9 @@
 package s3ctl
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -28,6 +30,7 @@ type mockOVHClient struct {
 	credentialsByPath map[string][]ovhS3Credentials
 	getUserByPath     map[string]ovhUserDetail
 	usersByPath       map[string][]ovhUserDetail
+	getErrByPath      map[string]error
 	postErrByPath     map[string]error
 	deleteErrByPath   map[string]error
 }
@@ -37,6 +40,9 @@ func (m *mockOVHClient) GetWithContext(_ context.Context, path string, response 
 		Method: "GET",
 		Path:   path,
 	})
+	if err := m.getErrByPath[path]; err != nil {
+		return err
+	}
 	switch typed := response.(type) {
 	case *ovhUserDetail:
 		user := m.getUserByPath[path]
@@ -423,6 +429,58 @@ func TestProvisionWithOVHDeleteRefusesSharedOwner(t *testing.T) {
 		if call.Method == "POST" || call.Method == "DELETE" {
 			t.Fatalf("expected no mutating OVH calls, got %#v", ovhClient.calls)
 		}
+	}
+}
+
+func TestMainWithEnvOVHDeleteMissingContainerReturnsJSONNotFound(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "ovh.json")
+	if err := os.WriteFile(
+		configPath,
+		[]byte(`{"provider":"ovh","bucket":"app-data","region":"UK","ovh_service_name":"project123","output":"json"}`),
+		0o644,
+	); err != nil {
+		t.Fatalf("os.WriteFile returned error: %v", err)
+	}
+
+	ovhClient := &mockOVHClient{
+		getErrByPath: map[string]error{
+			"/cloud/project/project123/region/UK/storage/app-data": &ovhapi.APIError{
+				Code:    404,
+				Class:   "Client::NotFound",
+				Message: "not found: NotFound",
+				QueryID: "query123",
+			},
+		},
+	}
+	withMockOVHClient(t, ovhClient)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := MainWithEnv([]string{"--config", configPath, "--delete", "--force"}, isolatedEnv(t, nil), &stdout, &stderr)
+
+	if exitCode != 1 {
+		t.Fatalf("expected exit code 1, got %d", exitCode)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected stderr to be empty, got %q", stderr.String())
+	}
+
+	var decoded commandErrorResult
+	if err := json.Unmarshal(stdout.Bytes(), &decoded); err != nil {
+		t.Fatalf("json.Unmarshal returned error: %v", err)
+	}
+	if decoded.Operation != operationDelete || decoded.Error.Code != "not_found" {
+		t.Fatalf("unexpected JSON error: %#v", decoded)
+	}
+	if decoded.Error.Message != `OVH bucket/container "app-data" does not exist in region "UK"; nothing was deleted` {
+		t.Fatalf("unexpected error message: %#v", decoded.Error)
+	}
+	if !strings.Contains(decoded.Error.Detail, "X-OVH-Query-Id: query123") {
+		t.Fatalf("expected OVH query id in detail, got %#v", decoded.Error)
+	}
+	if strings.Contains(decoded.Error.Message, "failed to find OVH user") {
+		t.Fatalf("expected operator-facing missing bucket message, got %#v", decoded.Error)
 	}
 }
 

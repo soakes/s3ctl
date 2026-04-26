@@ -2,7 +2,9 @@ package s3ctl
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -367,6 +369,75 @@ func TestMainWithEnvShowsErrorAndUsageForValidationFailures(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "Usage:") {
 		t.Fatalf("expected usage output, got %q", stderr.String())
+	}
+}
+
+func TestMainWithEnvShowsJSONValidationErrorWhenRequested(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := MainWithEnv([]string{"--create-scoped-credentials", "--output", "json"}, isolatedEnv(t, nil), &stdout, &stderr)
+
+	if exitCode != 1 {
+		t.Fatalf("expected exit code 1, got %d", exitCode)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected stderr to be empty, got %q", stderr.String())
+	}
+
+	var decoded commandErrorResult
+	if err := json.Unmarshal(stdout.Bytes(), &decoded); err != nil {
+		t.Fatalf("json.Unmarshal returned error: %v", err)
+	}
+	if decoded.Error.Code != "configuration_error" {
+		t.Fatalf("expected configuration error code, got %#v", decoded.Error)
+	}
+	if !strings.Contains(decoded.Error.Message, "at least one --bucket") {
+		t.Fatalf("expected validation message, got %#v", decoded.Error)
+	}
+	if strings.Contains(stdout.String(), "Usage:") {
+		t.Fatalf("expected JSON error without usage text, got %q", stdout.String())
+	}
+}
+
+func TestMainWithEnvShowsJSONRuntimeErrorFromConfigOutput(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "s3ctl.json")
+	if err := os.WriteFile(configPath, []byte(`{"bucket":"app-data","output":"json"}`), 0o644); err != nil {
+		t.Fatalf("os.WriteFile returned error: %v", err)
+	}
+
+	previous := newS3APIClient
+	newS3APIClient = func(context.Context, settings) (s3API, error) {
+		return nil, errors.New("client unavailable")
+	}
+	t.Cleanup(func() {
+		newS3APIClient = previous
+	})
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := MainWithEnv([]string{"--config", configPath}, isolatedEnv(t, nil), &stdout, &stderr)
+
+	if exitCode != 1 {
+		t.Fatalf("expected exit code 1, got %d", exitCode)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected stderr to be empty, got %q", stderr.String())
+	}
+
+	var decoded commandErrorResult
+	if err := json.Unmarshal(stdout.Bytes(), &decoded); err != nil {
+		t.Fatalf("json.Unmarshal returned error: %v", err)
+	}
+	if decoded.Operation != operationProvision || decoded.Error.Code != "operation_failed" {
+		t.Fatalf("unexpected JSON error: %#v", decoded)
+	}
+	if decoded.ConfigFile != configPath {
+		t.Fatalf("expected config path %q, got %q", configPath, decoded.ConfigFile)
+	}
+	if decoded.Error.Message != "client unavailable" {
+		t.Fatalf("expected runtime message, got %#v", decoded.Error)
 	}
 }
 

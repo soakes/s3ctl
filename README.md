@@ -266,6 +266,25 @@ Run it:
 s3ctl --config ./examples/s3ctl.json --dry-run --output json
 ```
 
+When `--output json`, `S3CTL_OUTPUT_FORMAT=json`, or `"output": "json"` is
+set, command failures are also written to stdout as JSON. The process still
+exits non-zero, but automation can read the `error.code`, `error.message`, and
+optional `error.detail` fields instead of scraping text:
+
+```json
+{
+  "operation": "delete",
+  "dry_run": false,
+  "config_file": "/home/operator/.config/s3ctl/config.json",
+  "resource_count": 1,
+  "error": {
+    "code": "not_found",
+    "message": "OVH bucket/container \"app-data\" does not exist in region \"UK\"; nothing was deleted",
+    "detail": "OVHcloud API error ..."
+  }
+}
+```
+
 Example OVHcloud config with OAuth2 service account credentials:
 
 ```json

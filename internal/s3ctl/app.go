@@ -290,6 +290,20 @@ type provisionResult struct {
 	Resources     []resourceResult `json:"resources"`
 }
 
+type commandErrorResult struct {
+	Operation     string             `json:"operation"`
+	DryRun        bool               `json:"dry_run"`
+	ConfigFile    string             `json:"config_file,omitempty"`
+	ResourceCount int                `json:"resource_count"`
+	Error         commandErrorDetail `json:"error"`
+}
+
+type commandErrorDetail struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+	Detail  string `json:"detail,omitempty"`
+}
+
 type resourceResult struct {
 	BucketName          string                  `json:"bucket_name"`
 	Endpoint            string                  `json:"endpoint,omitempty"`
@@ -313,6 +327,27 @@ type bucketExistsError struct {
 
 func (e bucketExistsError) Error() string {
 	return fmt.Sprintf("bucket %q already exists", e.Name)
+}
+
+type bucketNotFoundError struct {
+	Name     string
+	Provider string
+	Region   string
+	Cause    error
+}
+
+func (e bucketNotFoundError) Error() string {
+	if e.Provider == providerOVH {
+		if strings.TrimSpace(e.Region) != "" {
+			return fmt.Sprintf("OVH bucket/container %q does not exist in region %q; nothing was deleted", e.Name, e.Region)
+		}
+		return fmt.Sprintf("OVH bucket/container %q does not exist; nothing was deleted", e.Name)
+	}
+	return fmt.Sprintf("bucket %q does not exist; nothing was deleted", e.Name)
+}
+
+func (e bucketNotFoundError) Unwrap() error {
+	return e.Cause
 }
 
 type s3API interface {
@@ -344,6 +379,7 @@ func MainWithEnv(args []string, env map[string]string, stdout, stderr io.Writer)
 		return 0
 	}
 
+	requestedOutput := detectOutputFormat(args, env)
 	cfg, parsed, err := resolveSettings(args, env)
 	if err != nil {
 		if errors.Is(err, pflag.ErrHelp) || parsed.showHelp {
@@ -351,6 +387,12 @@ func MainWithEnv(args []string, env map[string]string, stdout, stderr io.Writer)
 				return 1
 			}
 			return 0
+		}
+		if requestedOutput == "json" {
+			if writeErr := writeJSONError(stdout, cfg, err, "configuration_error"); writeErr != nil {
+				return 1
+			}
+			return 1
 		}
 		if _, writeErr := fmt.Fprintf(stderr, "Error: %s\n\n", err); writeErr != nil {
 			return 1
@@ -389,7 +431,13 @@ func MainWithEnv(args []string, env map[string]string, stdout, stderr io.Writer)
 
 	result, err := provision(ctx, cfg)
 	if err != nil {
-		if _, writeErr := fmt.Fprintf(stderr, "Error: %s\n", err); writeErr != nil {
+		if cfg.Output == "json" {
+			if writeErr := writeJSONError(stdout, cfg, err, "operation_failed"); writeErr != nil {
+				return 1
+			}
+			return 1
+		}
+		if _, writeErr := fmt.Fprintf(stderr, "Error: %s\n", renderErrorMessage(err)); writeErr != nil {
 			return 1
 		}
 		return 1
@@ -411,6 +459,65 @@ func MainWithEnv(args []string, env map[string]string, stdout, stderr io.Writer)
 		return 1
 	}
 	return 0
+}
+
+func writeJSONError(w io.Writer, cfg settings, err error, fallbackCode string) error {
+	encoder := json.NewEncoder(w)
+	encoder.SetIndent("", "  ")
+	return encoder.Encode(commandErrorResult{
+		Operation:     operationFromSettings(cfg),
+		DryRun:        cfg.DryRun,
+		ConfigFile:    cfg.ConfigPath,
+		ResourceCount: len(cfg.Buckets),
+		Error: commandErrorDetail{
+			Code:    errorCode(err, fallbackCode),
+			Message: renderErrorMessage(err),
+			Detail:  renderErrorDetail(err),
+		},
+	})
+}
+
+func renderErrorMessage(err error) string {
+	var notFound bucketNotFoundError
+	if errors.As(err, &notFound) {
+		return notFound.Error()
+	}
+	return err.Error()
+}
+
+func renderErrorDetail(err error) string {
+	var notFound bucketNotFoundError
+	if errors.As(err, &notFound) && notFound.Cause != nil {
+		return notFound.Cause.Error()
+	}
+	return ""
+}
+
+func errorCode(err error, fallback string) string {
+	var notFound bucketNotFoundError
+	if errors.As(err, &notFound) {
+		return "not_found"
+	}
+	var exists bucketExistsError
+	if errors.As(err, &exists) {
+		return "already_exists"
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "timeout"
+	}
+	if fallback != "" {
+		return fallback
+	}
+	return "error"
+}
+
+func operationFromSettings(cfg settings) string {
+	switch {
+	case cfg.DeleteBucket:
+		return operationDelete
+	default:
+		return operationProvision
+	}
 }
 
 func resolveSettings(args []string, env map[string]string) (settings, parseResult, error) {
@@ -445,7 +552,7 @@ func resolveSettings(args []string, env map[string]string) (settings, parseResul
 	cfg := mergeSources(configSource, envSource, cliParsed.source)
 	cfg.ConfigPath = configPath
 	if err := validateSettings(cfg); err != nil {
-		return settings{}, cliParsed, err
+		return cfg, cliParsed, err
 	}
 
 	return cfg, cliParsed, nil
@@ -1454,7 +1561,7 @@ func deleteS3Buckets(ctx context.Context, cfg settings, targets []provisionTarge
 			return provisionResult{}, err
 		}
 		if !exists {
-			return provisionResult{}, fmt.Errorf("bucket %q does not exist", target.Bucket)
+			return provisionResult{}, bucketNotFoundError{Name: target.Bucket, Provider: providerS3}
 		}
 
 		if cfg.Force {
@@ -2151,6 +2258,64 @@ func extractConfigPath(args []string) string {
 		}
 	}
 	return ""
+}
+
+func extractOutputFormat(args []string) string {
+	output := ""
+	for index := 0; index < len(args); index++ {
+		arg := args[index]
+		switch {
+		case arg == "--output" && index+1 < len(args):
+			output = args[index+1]
+		case arg == "-o" && index+1 < len(args):
+			output = args[index+1]
+		case strings.HasPrefix(arg, "--output="):
+			output = strings.TrimPrefix(arg, "--output=")
+		case strings.HasPrefix(arg, "-o="):
+			output = strings.TrimPrefix(arg, "-o=")
+		case strings.HasPrefix(arg, "-o") && !strings.HasPrefix(arg, "--") && len(arg) > len("-o"):
+			output = strings.TrimPrefix(arg, "-o")
+		}
+	}
+	return output
+}
+
+func detectOutputFormat(args []string, env map[string]string) string {
+	output := defaultOutputFormat
+	if configPath, err := resolveConfigPath(args, env); err == nil && configPath != "" {
+		if configOutput := readConfigOutputFormat(configPath); configOutput != "" {
+			output = configOutput
+		}
+	}
+	if envOutput := envValue(env, envAliases.OutputFormat...); envOutput != "" {
+		output = envOutput
+	}
+	if cliOutput := extractOutputFormat(args); cliOutput != "" {
+		output = cliOutput
+	}
+	return strings.ToLower(strings.TrimSpace(output))
+}
+
+func readConfigOutputFormat(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+
+	var decoded map[string]json.RawMessage
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return ""
+	}
+
+	raw, ok := decoded["output"]
+	if !ok {
+		return ""
+	}
+	var output string
+	if err := json.Unmarshal(raw, &output); err != nil {
+		return ""
+	}
+	return output
 }
 
 func resolveConfigPath(args []string, env map[string]string) (string, error) {
