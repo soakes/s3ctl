@@ -99,16 +99,12 @@ func withMockS3Client(t *testing.T, client *mockS3Client) {
 	})
 }
 
-func TestValidateSettingsRequiresForceForDelete(t *testing.T) {
-	err := validateSettings(settings{
+func TestValidateSettingsAllowsDeleteWithoutForce(t *testing.T) {
+	if err := validateSettings(settings{
 		Buckets:      []string{"app-data"},
 		DeleteBucket: true,
-	})
-	if err == nil {
-		t.Fatal("expected delete without force to fail validation")
-	}
-	if !strings.Contains(err.Error(), "--force") {
-		t.Fatalf("expected force validation error, got %q", err)
+	}); err != nil {
+		t.Fatalf("expected delete without force to validate, got %v", err)
 	}
 
 	if err := validateSettings(settings{
@@ -155,6 +151,97 @@ func TestLoadConfigRejectsInvalidDeleteAlias(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "delete must be a boolean") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestDeleteS3BucketsDeletesEmptyBucketWithoutForce(t *testing.T) {
+	client := &mockS3Client{}
+
+	result, err := deleteS3Buckets(
+		context.Background(),
+		settings{DeleteBucket: true, Region: "us-east-1"},
+		[]provisionTarget{{Bucket: "app-data"}},
+		provisionResult{Operation: operationDelete, ResourceCount: 1},
+		client,
+	)
+	if err != nil {
+		t.Fatalf("deleteS3Buckets returned error: %v", err)
+	}
+
+	resource := result.Resources[0]
+	if !resource.Deleted || resource.ObjectsDeleted != 0 {
+		t.Fatalf("expected empty bucket delete without object deletions, got %#v", resource)
+	}
+
+	wantCalls := []string{
+		"HeadBucket",
+		"ListObjectVersions",
+		"ListObjectsV2",
+		"DeleteBucket",
+	}
+	if strings.Join(client.calls, ",") != strings.Join(wantCalls, ",") {
+		t.Fatalf("unexpected S3 calls:\nwant %#v\ngot  %#v", wantCalls, client.calls)
+	}
+}
+
+func TestDeleteS3BucketsRefusesCurrentObjectsWithoutForce(t *testing.T) {
+	client := &mockS3Client{
+		listObjectsV2Outputs: []*s3.ListObjectsV2Output{
+			{Contents: []types.Object{{Key: aws.String("current.txt")}}},
+		},
+	}
+
+	_, err := deleteS3Buckets(
+		context.Background(),
+		settings{DeleteBucket: true, Region: "us-east-1"},
+		[]provisionTarget{{Bucket: "app-data"}},
+		provisionResult{Operation: operationDelete, ResourceCount: 1},
+		client,
+	)
+	if err == nil {
+		t.Fatal("expected non-empty bucket without force to fail")
+	}
+	if !strings.Contains(err.Error(), "non-empty bucket") || !strings.Contains(err.Error(), "--force") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	wantCalls := []string{
+		"HeadBucket",
+		"ListObjectVersions",
+		"ListObjectsV2",
+	}
+	if strings.Join(client.calls, ",") != strings.Join(wantCalls, ",") {
+		t.Fatalf("unexpected S3 calls:\nwant %#v\ngot  %#v", wantCalls, client.calls)
+	}
+}
+
+func TestDeleteS3BucketsRefusesObjectVersionsWithoutForce(t *testing.T) {
+	client := &mockS3Client{
+		listVersionsOutputs: []*s3.ListObjectVersionsOutput{
+			{Versions: []types.ObjectVersion{{Key: aws.String("versioned.txt"), VersionId: aws.String("v1")}}},
+		},
+	}
+
+	_, err := deleteS3Buckets(
+		context.Background(),
+		settings{DeleteBucket: true, Region: "us-east-1"},
+		[]provisionTarget{{Bucket: "app-data"}},
+		provisionResult{Operation: operationDelete, ResourceCount: 1},
+		client,
+	)
+	if err == nil {
+		t.Fatal("expected versioned non-empty bucket without force to fail")
+	}
+	if !strings.Contains(err.Error(), "non-empty bucket") || !strings.Contains(err.Error(), "--force") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	wantCalls := []string{
+		"HeadBucket",
+		"ListObjectVersions",
+	}
+	if strings.Join(client.calls, ",") != strings.Join(wantCalls, ",") {
+		t.Fatalf("unexpected S3 calls:\nwant %#v\ngot  %#v", wantCalls, client.calls)
 	}
 }
 
@@ -367,7 +454,7 @@ func TestMainWithEnvDryRunDeleteDoesNotRequireForce(t *testing.T) {
 	}
 }
 
-func TestMainWithEnvDeleteWithoutForceFailsBeforeAPIUse(t *testing.T) {
+func TestMainWithEnvDeleteWithoutForceDeletesEmptyBucket(t *testing.T) {
 	client := &mockS3Client{}
 	withMockS3Client(t, client)
 
@@ -380,14 +467,23 @@ func TestMainWithEnvDeleteWithoutForceFailsBeforeAPIUse(t *testing.T) {
 		&stderr,
 	)
 
-	if exitCode != 1 {
-		t.Fatalf("expected exit code 1, got %d", exitCode)
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d; stderr=%q", exitCode, stderr.String())
 	}
-	if !strings.Contains(stderr.String(), "without --force") {
-		t.Fatalf("expected force error, got %q", stderr.String())
+	if stderr.Len() != 0 {
+		t.Fatalf("expected stderr to be empty, got %q", stderr.String())
 	}
-	if len(client.calls) != 0 {
-		t.Fatalf("expected validation to fail before S3 calls, got %#v", client.calls)
+	if !strings.Contains(stdout.String(), "Bucket deleted: yes") {
+		t.Fatalf("expected delete success, got %q", stdout.String())
+	}
+	wantCalls := []string{
+		"HeadBucket",
+		"ListObjectVersions",
+		"ListObjectsV2",
+		"DeleteBucket",
+	}
+	if strings.Join(client.calls, ",") != strings.Join(wantCalls, ",") {
+		t.Fatalf("unexpected S3 calls:\nwant %#v\ngot  %#v", wantCalls, client.calls)
 	}
 }
 

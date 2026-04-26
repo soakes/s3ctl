@@ -9,6 +9,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	ovhapi "github.com/ovh/go-ovh/ovh"
 )
 
@@ -488,6 +491,104 @@ func TestProvisionWithOVHDeleteEmptiesContainerAndDeletesUser(t *testing.T) {
 		"DELETE /cloud/project/project123/user/1234/s3Credentials/OVHACCESS",
 		"GET /cloud/project/project123/user/1234",
 		"DELETE /cloud/project/project123/user/1234",
+	}
+	if !reflect.DeepEqual(gotPaths, wantPaths) {
+		t.Fatalf("unexpected OVH API calls:\nwant %#v\ngot  %#v", wantPaths, gotPaths)
+	}
+
+	wantS3Calls := []string{"ListObjectVersions", "ListObjectsV2"}
+	if !reflect.DeepEqual(s3Client.calls, wantS3Calls) {
+		t.Fatalf("unexpected temporary S3 calls:\nwant %#v\ngot  %#v", wantS3Calls, s3Client.calls)
+	}
+}
+
+func TestProvisionWithOVHDeleteEmptyContainerWithoutForce(t *testing.T) {
+	ovhClient := &mockOVHClient{
+		containersByPath: map[string]ovhStorageContainer{
+			"/cloud/project/project123/region/GRA/storage/app-data": {Name: "app-data", OwnerID: 1234},
+		},
+		getUserByPath: map[string]ovhUserDetail{
+			"/cloud/project/project123/user/1234": {ID: 1234, Description: "app-data", Username: "user-abcd", Status: "ok"},
+		},
+		credentialsByPath: map[string][]ovhS3Credentials{
+			"/cloud/project/project123/user/1234/s3Credentials": {
+				{Access: "OLDACCESS"},
+			},
+		},
+	}
+	withMockOVHClient(t, ovhClient)
+
+	s3Client := &mockS3Client{}
+	withMockS3Client(t, s3Client)
+
+	result, err := provision(context.Background(), settings{
+		Provider:             providerOVH,
+		Buckets:              []string{"app-data"},
+		Region:               "GRA",
+		OVHServiceName:       "project123",
+		OVHUserRole:          defaultOVHUserRole,
+		OVHStoragePolicyRole: defaultOVHStoragePolicyRole,
+		DeleteBucket:         true,
+	})
+	if err != nil {
+		t.Fatalf("provision returned error: %v", err)
+	}
+
+	resource := result.Resources[0]
+	if !resource.Deleted || resource.ObjectsDeleted != 0 || resource.CredentialsDeleted != 2 {
+		t.Fatalf("expected empty OVH bucket delete without force, got %#v", resource)
+	}
+
+	wantS3Calls := []string{"ListObjectVersions", "ListObjectsV2"}
+	if !reflect.DeepEqual(s3Client.calls, wantS3Calls) {
+		t.Fatalf("unexpected temporary S3 calls:\nwant %#v\ngot  %#v", wantS3Calls, s3Client.calls)
+	}
+}
+
+func TestProvisionWithOVHDeleteRefusesNonEmptyContainerWithoutForce(t *testing.T) {
+	ovhClient := &mockOVHClient{
+		containersByPath: map[string]ovhStorageContainer{
+			"/cloud/project/project123/region/GRA/storage/app-data": {Name: "app-data", OwnerID: 1234},
+		},
+		getUserByPath: map[string]ovhUserDetail{
+			"/cloud/project/project123/user/1234": {ID: 1234, Description: "app-data", Username: "user-abcd", Status: "ok"},
+		},
+	}
+	withMockOVHClient(t, ovhClient)
+
+	s3Client := &mockS3Client{
+		listObjectsV2Outputs: []*s3.ListObjectsV2Output{
+			{Contents: []types.Object{{Key: aws.String("current.txt")}}},
+		},
+	}
+	withMockS3Client(t, s3Client)
+
+	_, err := provision(context.Background(), settings{
+		Provider:             providerOVH,
+		Buckets:              []string{"app-data"},
+		Region:               "GRA",
+		OVHServiceName:       "project123",
+		OVHUserRole:          defaultOVHUserRole,
+		OVHStoragePolicyRole: defaultOVHStoragePolicyRole,
+		DeleteBucket:         true,
+	})
+	if err == nil {
+		t.Fatal("expected non-empty OVH delete without force to fail")
+	}
+	if !strings.Contains(err.Error(), "non-empty bucket") || !strings.Contains(err.Error(), "--force") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	gotPaths := make([]string, 0, len(ovhClient.calls))
+	for _, call := range ovhClient.calls {
+		gotPaths = append(gotPaths, call.Method+" "+call.Path)
+	}
+	wantPaths := []string{
+		"GET /cloud/project/project123/region/GRA/storage/app-data",
+		"GET /cloud/project/project123/user/1234",
+		"GET /cloud/project/project123/user/1234/s3Credentials",
+		"POST /cloud/project/project123/user/1234/s3Credentials",
+		"DELETE /cloud/project/project123/user/1234/s3Credentials/OVHACCESS",
 	}
 	if !reflect.DeepEqual(gotPaths, wantPaths) {
 		t.Fatalf("unexpected OVH API calls:\nwant %#v\ngot  %#v", wantPaths, gotPaths)

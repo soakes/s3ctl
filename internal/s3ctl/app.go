@@ -547,7 +547,7 @@ func newFlagSet(flags *cliFlags) *pflag.FlagSet {
 	fs.BoolVar(&flags.OVHEncryptData, "ovh-encrypt-data", false, "Enable OVHcloud server-side encryption with OVH-managed keys")
 	fs.BoolVar(&flags.OVHRotateCredentials, "ovh-rotate-credentials", false, "Rotate existing OVHcloud S3 credentials for each bucket instead of creating containers")
 	fs.BoolVar(&flags.DeleteBucket, "delete", false, "Delete each bucket instead of creating buckets")
-	fs.BoolVar(&flags.Force, "force", false, "Confirm destructive delete operations")
+	fs.BoolVar(&flags.Force, "force", false, "Allow delete operations to remove bucket contents before deleting buckets")
 	fs.StringVar(&flags.Timeout, "timeout", defaultProvisionTimeout.String(), "Overall operation timeout, for example 30s, 5m, or 1h")
 	fs.StringVarP(&flags.Output, "output", "o", defaultOutputFormat, "Output format: text or json")
 	fs.BoolVar(&flags.DryRun, "dry-run", false, "Show the planned actions without making changes")
@@ -576,6 +576,7 @@ Examples:
   %s --bucket app-data --endpoint https://objects.example.com --region us-east-1
   %s --provider ovh --bucket app-data --region GRA --ovh-service-name PROJECT_ID
   %s --provider ovh --bucket app-data --ovh-rotate-credentials --output json
+  %s --provider ovh --bucket app-data --delete
   %s --provider ovh --bucket app-data --delete --force
   %s --bucket app-data --create-scoped-credentials --credential-policy-template bucket-readwrite
   %s --bucket app-data --bucket logs --create-scoped-credentials --dry-run --output json
@@ -584,7 +585,7 @@ Examples:
   %s --config ./examples/s3ctl.json --dry-run --output json
 
 Flags:
-`, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName)
+`, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName)
 	builder.WriteString(fs.FlagUsagesWrapped(100))
 
 	builder.WriteString(`
@@ -1007,9 +1008,6 @@ func validateSettings(cfg settings) error {
 	}
 	if cfg.DeleteBucket && cfg.OVHRotateCredentials {
 		return errors.New("use either --delete or --ovh-rotate-credentials, not both")
-	}
-	if cfg.DeleteBucket && !cfg.Force && !cfg.DryRun {
-		return errors.New("refusing to delete buckets without --force; rerun with --delete --force or use --dry-run to preview")
 	}
 	if cfg.BucketPolicyFile != "" && cfg.BucketPolicyTemplate != "" {
 		return errors.New("use either --bucket-policy-file or --bucket-policy-template, not both")
@@ -1459,11 +1457,17 @@ func deleteS3Buckets(ctx context.Context, cfg settings, targets []provisionTarge
 			return provisionResult{}, fmt.Errorf("bucket %q does not exist", target.Bucket)
 		}
 
-		deleted, err := emptyS3Bucket(ctx, client, target.Bucket)
-		if err != nil {
-			return provisionResult{}, err
+		if cfg.Force {
+			deleted, err := emptyS3Bucket(ctx, client, target.Bucket)
+			if err != nil {
+				return provisionResult{}, err
+			}
+			resource.ObjectsDeleted = deleted
+		} else {
+			if err := ensureS3BucketEmpty(ctx, client, target.Bucket); err != nil {
+				return provisionResult{}, err
+			}
 		}
-		resource.ObjectsDeleted = deleted
 
 		if err := deleteS3Bucket(ctx, client, target.Bucket); err != nil {
 			return provisionResult{}, err
@@ -1473,6 +1477,26 @@ func deleteS3Buckets(ctx context.Context, cfg settings, targets []provisionTarge
 	}
 
 	return result, nil
+}
+
+func ensureS3BucketEmpty(ctx context.Context, client s3API, bucket string) error {
+	hasObjectVersions, err := s3BucketHasObjectVersions(ctx, client, bucket)
+	if err != nil {
+		return err
+	}
+	if hasObjectVersions {
+		return fmt.Errorf("refusing to delete non-empty bucket %q without --force; rerun with --delete --force to remove objects, versions, and delete markers before deleting the bucket", bucket)
+	}
+
+	hasCurrentObjects, err := s3BucketHasCurrentObjects(ctx, client, bucket)
+	if err != nil {
+		return err
+	}
+	if hasCurrentObjects {
+		return fmt.Errorf("refusing to delete non-empty bucket %q without --force; rerun with --delete --force to remove objects before deleting the bucket", bucket)
+	}
+
+	return nil
 }
 
 func emptyS3Bucket(ctx context.Context, client s3API, bucket string) (int, error) {
@@ -1487,6 +1511,71 @@ func emptyS3Bucket(ctx context.Context, client s3API, bucket string) (int, error
 	}
 
 	return versionedDeleted + currentDeleted, nil
+}
+
+func s3BucketHasObjectVersions(ctx context.Context, client s3API, bucket string) (bool, error) {
+	input := &s3.ListObjectVersionsInput{
+		Bucket:  aws.String(bucket),
+		MaxKeys: aws.Int32(1),
+	}
+
+	for {
+		output, err := client.ListObjectVersions(ctx, input)
+		if err != nil {
+			if isUnsupportedObjectVersionListing(err) {
+				return false, nil
+			}
+			return false, fmt.Errorf("failed to list object versions in bucket %q: %w", bucket, err)
+		}
+
+		for _, version := range output.Versions {
+			if version.Key != nil {
+				return true, nil
+			}
+		}
+		for _, marker := range output.DeleteMarkers {
+			if marker.Key != nil {
+				return true, nil
+			}
+		}
+
+		if !aws.ToBool(output.IsTruncated) {
+			return false, nil
+		}
+		if output.NextKeyMarker == nil && output.NextVersionIdMarker == nil {
+			return false, fmt.Errorf("failed to continue listing object versions in bucket %q: truncated response did not include a next marker", bucket)
+		}
+		input.KeyMarker = output.NextKeyMarker
+		input.VersionIdMarker = output.NextVersionIdMarker
+	}
+}
+
+func s3BucketHasCurrentObjects(ctx context.Context, client s3API, bucket string) (bool, error) {
+	input := &s3.ListObjectsV2Input{
+		Bucket:  aws.String(bucket),
+		MaxKeys: aws.Int32(1),
+	}
+
+	for {
+		output, err := client.ListObjectsV2(ctx, input)
+		if err != nil {
+			return false, fmt.Errorf("failed to list current objects in bucket %q: %w", bucket, err)
+		}
+
+		for _, object := range output.Contents {
+			if object.Key != nil {
+				return true, nil
+			}
+		}
+
+		if !aws.ToBool(output.IsTruncated) {
+			return false, nil
+		}
+		if output.NextContinuationToken == nil {
+			return false, fmt.Errorf("failed to continue listing current objects in bucket %q: truncated response did not include a continuation token", bucket)
+		}
+		input.ContinuationToken = output.NextContinuationToken
+	}
 }
 
 func deleteS3ObjectVersions(ctx context.Context, client s3API, bucket string) (int, error) {

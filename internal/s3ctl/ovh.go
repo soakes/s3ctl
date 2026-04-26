@@ -272,11 +272,17 @@ func deleteOVHBuckets(ctx context.Context, cfg settings, targets []provisionTarg
 			return provisionResult{}, wrapCleanupError(err, cleanupOVHS3Credentials(ctx, client, cfg, user.ID, temporaryCredentials.Access))
 		}
 
-		deletedObjects, err := emptyS3Bucket(ctx, s3Client, target.Bucket)
-		if err != nil {
-			return provisionResult{}, wrapCleanupError(err, cleanupOVHS3Credentials(ctx, client, cfg, user.ID, temporaryCredentials.Access))
+		if cfg.Force {
+			deletedObjects, err := emptyS3Bucket(ctx, s3Client, target.Bucket)
+			if err != nil {
+				return provisionResult{}, wrapCleanupError(err, cleanupOVHS3Credentials(ctx, client, cfg, user.ID, temporaryCredentials.Access))
+			}
+			resource.ObjectsDeleted = deletedObjects
+		} else {
+			if err := ensureS3BucketEmpty(ctx, s3Client, target.Bucket); err != nil {
+				return provisionResult{}, wrapCleanupError(err, cleanupOVHS3Credentials(ctx, client, cfg, user.ID, temporaryCredentials.Access))
+			}
 		}
-		resource.ObjectsDeleted = deletedObjects
 
 		if err := cleanupOVHContainer(ctx, client, cfg, target.Bucket); err != nil {
 			return provisionResult{}, wrapCleanupError(err, cleanupOVHS3Credentials(ctx, client, cfg, user.ID, temporaryCredentials.Access))

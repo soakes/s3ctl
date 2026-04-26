@@ -71,8 +71,9 @@
   signing or publish credentials.
 - If workflow behavior changes, update the README and any operator-facing docs
   in the same change when user-visible behavior changes.
-- Treat destructive storage operations as security-sensitive. Keep delete paths
-  guarded by explicit confirmation, preserve dry-run behavior, and verify
+- Treat destructive storage operations as security-sensitive. Keep object
+  removal guarded by explicit confirmation, allow unforced bucket deletes only
+  after proving the bucket is empty, preserve dry-run behavior, and verify
   provider ownership assumptions before deleting credentials or users.
 
 ## Testing Expectations

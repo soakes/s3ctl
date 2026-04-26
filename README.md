@@ -15,7 +15,7 @@ It is designed for the common operational workflow:
 - optionally apply a bucket policy from a built-in template or JSON file
 - create a fresh access key and secret key for each bucket
 - attach a generated policy so each credential only has access to its own bucket
-- delete buckets with an explicit force guard after emptying their contents
+- delete empty buckets safely, or delete non-empty buckets with an explicit force guard
 - drive the same workflow from flags, environment variables, JSON config, or CSV batch input
 
 ## Quick Start
@@ -82,7 +82,16 @@ s3ctl \
   --dry-run
 ```
 
-Delete a bucket after checking the dry-run output:
+Delete an empty bucket after checking the dry-run output:
+
+```bash
+s3ctl \
+  --provider ovh \
+  --bucket app-data \
+  --delete
+```
+
+Delete a non-empty bucket after checking the dry-run output:
 
 ```bash
 s3ctl \
@@ -412,18 +421,22 @@ AWS IAM is the default target. When you need an IAM-compatible alternative, use 
 ## Deleting Buckets
 
 Use `--delete` with one or more `--bucket` values to remove buckets instead of
-creating them. Actual deletes require `--force`; without it, `s3ctl` fails
-before making API calls. Use `--dry-run` to preview the target without needing
-`--force`.
+creating them. Empty buckets can be deleted without `--force`. Non-empty
+buckets require `--force`; without it, `s3ctl` lists the bucket contents and
+refuses to delete the bucket if objects, object versions, or delete markers are
+present. Use `--dry-run` to preview the target.
 
 ```bash
 s3ctl --bucket app-data --delete --dry-run
+s3ctl --bucket app-data --delete
 s3ctl --bucket app-data --delete --force --timeout 30m
 ```
 
-The S3 provider empties the bucket before deleting it. It deletes object
-versions and delete markers when the endpoint supports version listing, then
-deletes any remaining current objects and finally deletes the bucket.
+Without `--force`, the S3 provider only lists object versions, delete markers,
+and current objects to confirm the bucket is empty before deleting it. With
+`--force`, it deletes object versions and delete markers when the endpoint
+supports version listing, deletes any remaining current objects, and finally
+deletes the bucket.
 The S3 principal running the delete needs the matching list, object delete,
 object version delete, and bucket delete permissions.
 
@@ -432,8 +445,7 @@ JSON config can also drive this mode:
 ```json
 {
   "bucket": "app-data",
-  "delete_bucket": true,
-  "force": true
+  "delete_bucket": true
 }
 ```
 
@@ -441,7 +453,7 @@ The shorter `"delete": true` config key is accepted as an alias for
 `"delete_bucket": true`.
 
 Keep `"force": true` out of shared default configs unless every run using that
-config should be allowed to delete buckets.
+config should be allowed to remove bucket contents before deleting buckets.
 
 Use `--timeout`, `S3CTL_TIMEOUT`, or `"timeout": "30m"` for large buckets or
 slower object-storage endpoints. The default timeout is `10m`.
@@ -641,15 +653,18 @@ OVHcloud buckets are containers, but the delete command still uses the bucket
 name:
 
 ```bash
-s3ctl --provider ovh --bucket app-data --delete --force
+s3ctl --provider ovh --bucket app-data --delete
 ```
 
 For OVHcloud deletes, `s3ctl` looks up the container owner, creates a temporary
-S3 credential for that OVH Public Cloud user, empties the container through the
-S3-compatible API, deletes the container through the OVHcloud Public Cloud API,
-then deletes the user's S3 credentials and the OVH Public Cloud user. If the
-container is removed but a final credential/user cleanup call fails, the command
-prints a warning so the stale identity can be removed manually.
+S3 credential for that OVH Public Cloud user, and checks whether the container
+is empty through the S3-compatible API. Empty containers are deleted without
+`--force`. Non-empty containers require `--force`, which allows `s3ctl` to empty
+the container through the S3-compatible API before deleting it through the
+OVHcloud Public Cloud API. After the container is removed, `s3ctl` deletes the
+user's S3 credentials and the OVH Public Cloud user. If the container is removed
+but a final credential/user cleanup call fails, the command prints a warning so
+the stale identity can be removed manually.
 
 For safety, OVHcloud delete and credential rotation only continue when the
 container owner looks bucket-dedicated: the OVH Public Cloud user description
