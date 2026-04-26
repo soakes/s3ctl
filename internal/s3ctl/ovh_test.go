@@ -327,6 +327,49 @@ func TestProvisionWithOVHCreatesUserCredentialsContainerAndPolicy(t *testing.T) 
 	assertOVHUserS3PolicyScopedToBucket(t, userPolicyBody.Policy, "app-data", nil)
 }
 
+func TestMainWithEnvOVHJSONShowsScopedAccessPolicyOnly(t *testing.T) {
+	client := &mockOVHClient{}
+	withMockOVHClient(t, client)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := MainWithEnv(
+		[]string{
+			"--provider", "ovh",
+			"--bucket", "app-data",
+			"--region", "GRA",
+			"--ovh-service-name", "project123",
+			"--output", "json",
+		},
+		isolatedEnv(t, nil),
+		&stdout,
+		&stderr,
+	)
+
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d", exitCode)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected stderr to be empty, got %q", stderr.String())
+	}
+
+	var decoded map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &decoded); err != nil {
+		t.Fatalf("json.Unmarshal returned error: %v", err)
+	}
+	resources := decoded["resources"].([]any)
+	resource := resources[0].(map[string]any)
+	if _, ok := resource["bucket_policy_applied"]; ok {
+		t.Fatalf("expected OVH JSON to omit unused bucket_policy_applied, got %s", stdout.String())
+	}
+	if _, ok := resource["access_policy_applied"]; ok {
+		t.Fatalf("expected OVH JSON to omit legacy access_policy_applied, got %s", stdout.String())
+	}
+	if resource["scoped_access_policy_applied"] != true {
+		t.Fatalf("expected OVH JSON to show scoped access policy, got %s", stdout.String())
+	}
+}
+
 func TestProvisionWithOVHAppliesConfiguredContainerTags(t *testing.T) {
 	client := &mockOVHClient{}
 	withMockOVHClient(t, client)

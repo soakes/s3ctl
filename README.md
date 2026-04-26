@@ -586,6 +586,10 @@ list objects in the bucket. Bare `mc ls alias` uses the S3 account-level bucket
 listing API, which OVHcloud documents as all-buckets or denied rather than a
 reliable single-bucket filtered result.
 
+JSON output reports this OVHcloud container/S3 user policy as
+`scoped_access_policy_applied`. `bucket_policy_applied` is only emitted when an
+S3 bucket policy document was actually applied.
+
 For `readOnly` and `readWrite`, `s3ctl` also adds explicit deny statements for
 unsupported operations on the owned bucket. OVHcloud currently falls back to the
 bucket owner's ACL when a user policy has no matching allow or deny, so explicit

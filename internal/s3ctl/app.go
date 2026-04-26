@@ -240,11 +240,11 @@ type resourceResult struct {
 	ObjectsDeleted      int                     `json:"objects_deleted,omitempty"`
 	VersioningEnabled   bool                    `json:"versioning_enabled"`
 	EncryptionEnabled   bool                    `json:"encryption_enabled"`
-	BucketPolicyApplied bool                    `json:"bucket_policy_applied"`
+	BucketPolicyApplied bool                    `json:"bucket_policy_applied,omitempty"`
 	BucketPolicySource  string                  `json:"bucket_policy_source,omitempty"`
 	CredentialsRotated  bool                    `json:"credentials_rotated,omitempty"`
 	CredentialsDeleted  int                     `json:"credentials_deleted,omitempty"`
-	AccessPolicyApplied bool                    `json:"access_policy_applied,omitempty"`
+	AccessPolicyApplied bool                    `json:"scoped_access_policy_applied,omitempty"`
 	ScopedCredentials   *scopedCredentialResult `json:"scoped_credentials,omitempty"`
 	Warnings            []string                `json:"warnings,omitempty"`
 }
@@ -2005,9 +2005,9 @@ func renderText(result provisionResult) string {
 
 	for _, resource := range result.Resources {
 		if result.Operation == operationRepair {
-			policyRepairLabel := "Access policies repaired"
+			policyRepairLabel := "Scoped access policy repaired"
 			if result.DryRun {
-				policyRepairLabel = "Access policy repair planned"
+				policyRepairLabel = "Scoped access policy repair planned"
 			}
 			lines = append(lines,
 				"",
