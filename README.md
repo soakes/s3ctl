@@ -27,6 +27,9 @@ make build
 ./dist/s3ctl --help
 ```
 
+`s3ctl --help` is a short operator quick reference. Use `s3ctl --help-full`
+when you need the complete flag, template, and batch CSV reference.
+
 Install the latest published binary:
 
 ```bash
@@ -105,6 +108,12 @@ Show focused bucket workflow help:
 
 ```bash
 s3ctl --bucket app-data --help
+```
+
+Show the full CLI reference:
+
+```bash
+s3ctl --help-full
 ```
 
 Plan multiple buckets from repeated flags:

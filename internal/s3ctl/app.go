@@ -184,13 +184,15 @@ type cliFlags struct {
 	Output                   string
 	DryRun                   bool
 	Help                     bool
+	HelpFull                 bool
 	Version                  bool
 }
 
 type parseResult struct {
-	source      source
-	showHelp    bool
-	showVersion bool
+	source       source
+	showHelp     bool
+	showHelpFull bool
+	showVersion  bool
 }
 
 type provisionTarget struct {
@@ -303,7 +305,7 @@ func MainWithEnv(args []string, env map[string]string, stdout, stderr io.Writer)
 	requestedOutput := detectOutputFormat(args, env)
 	cfg, parsed, err := resolveSettings(args, env)
 	if err != nil {
-		if errors.Is(err, pflag.ErrHelp) || parsed.showHelp {
+		if errors.Is(err, pflag.ErrHelp) || parsed.showHelp || parsed.showHelpFull {
 			if writeErr := writeUsageForArgs(stdout, args); writeErr != nil {
 				return 1
 			}
@@ -324,7 +326,7 @@ func MainWithEnv(args []string, env map[string]string, stdout, stderr io.Writer)
 		return 1
 	}
 
-	if parsed.showHelp {
+	if parsed.showHelp || parsed.showHelpFull {
 		if err := writeUsageForArgs(stdout, args); err != nil {
 			return 1
 		}
@@ -447,7 +449,7 @@ func resolveSettings(args []string, env map[string]string) (settings, parseResul
 		return settings{}, parseResult{}, err
 	}
 
-	if cliParsed.showHelp {
+	if cliParsed.showHelp || cliParsed.showHelpFull {
 		return settings{}, cliParsed, nil
 	}
 
@@ -531,8 +533,9 @@ func parseFlags(args []string) (parseResult, error) {
 			Output:                   changedString(fs, "output", flags.Output),
 			DryRun:                   changedBool(fs, "dry-run", flags.DryRun),
 		},
-		showHelp:    flags.Help,
-		showVersion: flags.Version,
+		showHelp:     flags.Help,
+		showHelpFull: flags.HelpFull,
+		showVersion:  flags.Version,
 	}, nil
 }
 
@@ -581,6 +584,7 @@ func newFlagSet(flags *cliFlags) *pflag.FlagSet {
 	fs.StringVarP(&flags.Output, "output", "o", defaultOutputFormat, "Output format: text or json")
 	fs.BoolVar(&flags.DryRun, "dry-run", false, "Show the planned actions without making changes")
 	fs.BoolVarP(&flags.Help, "help", "h", false, "Show help")
+	fs.BoolVar(&flags.HelpFull, "help-full", false, "Show the full reference help")
 	fs.BoolVar(&flags.Version, "version", false, "Show version information")
 
 	return fs
@@ -597,6 +601,9 @@ func writeUsageForArgs(w io.Writer, args []string) error {
 }
 
 func usageTextForArgs(args []string) string {
+	if argHasFlag(args, "help-full", "") {
+		return fullUsageText()
+	}
 	if shouldShowBucketHelp(args) {
 		return bucketUsageText()
 	}
@@ -604,14 +611,79 @@ func usageTextForArgs(args []string) string {
 }
 
 func usageText() string {
-	flags := cliFlags{}
-	fs := newFlagSet(&flags)
-	var builder strings.Builder
-
-	_, _ = fmt.Fprintf(&builder, `%s provisions S3 buckets and can automatically create scoped access credentials.
+	return fmt.Sprintf(`%s creates S3 buckets and bucket-scoped credentials.
 
 Usage:
-  %s [flags]
+  %s --bucket NAME [options]
+  %s --batch-file PATH [options]
+  %s --config PATH [options]
+
+Common workflows:
+  %s --bucket app-data --dry-run
+  %s --bucket app-data --create-scoped-credentials --output json
+  %s --provider ovh --bucket app-data --region UK --ovh-service-name PROJECT_ID
+  %s --provider ovh --bucket app-data --ovh-rotate-credentials --output json
+  %s --bucket app-data --delete
+  %s --bucket app-data --delete --force --timeout 30m
+
+Core options:
+  -b, --bucket NAME            Bucket to create, rotate, or delete. Repeatable.
+      --batch-file PATH        CSV file of bucket requests.
+  -c, --config PATH            JSON config file.
+      --provider NAME          Provider: s3 or ovh. Default: s3.
+      --endpoint URL           S3-compatible endpoint URL.
+      --region NAME            Bucket region. Default: us-east-1.
+  -o, --output FORMAT          Output: text or json. Default: text.
+      --dry-run                Show planned actions without making changes.
+      --timeout DURATION       Overall timeout. Default: 10m.
+
+Bucket options:
+      --enable-versioning
+      --bucket-policy-file PATH
+      --bucket-policy-template NAME
+      --create-scoped-credentials
+      --credential-policy-template NAME
+
+S3/IAM options:
+      --profile NAME
+      --access-key ID
+      --secret-key SECRET
+      --session-token TOKEN
+      --iam-endpoint URL
+      --iam-user-prefix PREFIX
+
+OVHcloud options:
+      --ovh-service-name PROJECT_ID
+      --ovh-client-id ID
+      --ovh-client-secret SECRET
+      --ovh-application-key KEY
+      --ovh-application-secret SECRET
+      --ovh-consumer-key KEY
+      --ovh-encrypt-data
+      --ovh-rotate-credentials
+      --ovh-tag KEY=VALUE
+
+Delete options:
+      --delete                 Delete buckets instead of creating them.
+      --force                  Empty non-empty buckets before delete.
+
+More help:
+  %s --bucket NAME --help      Show bucket workflow help.
+  %s --help-full               Show every flag, template, and CSV field.
+  %s --version                 Show version information.
+`, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName)
+}
+
+func fullUsageText() string {
+	flags := cliFlags{}
+	fs := newFlagSet(&flags)
+	setHelpValueTypes(fs)
+	var builder strings.Builder
+
+	_, _ = fmt.Fprintf(&builder, `%s full reference.
+
+Usage:
+  %s [options]
 
 Examples:
   %s --bucket app-data --endpoint https://objects.example.com --region us-east-1
@@ -674,76 +746,113 @@ Notes:
 	return builder.String()
 }
 
-func bucketUsageText() string {
-	var builder strings.Builder
-
-	_, _ = fmt.Fprintf(&builder, `%s bucket workflow help.
-
-Usage:
-  %s --bucket NAME [bucket flags]
-  %s --batch-file PATH [bucket flags]
-
-Examples:
-  %s --bucket app-data --dry-run
-  %s --bucket app-data --delete
-  %s --bucket app-data --delete --force --timeout 30m
-  %s --provider ovh --bucket app-data --region UK --ovh-service-name PROJECT_ID
-  %s --provider ovh --bucket app-data --ovh-rotate-credentials --output json
-
-Bucket flags:
-`, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName)
-	builder.WriteString(flagUsagesForNames(bucketHelpFlagNames()))
-	builder.WriteString(`
-Run ` + binaryName + ` --help for every provider, auth, IAM, and configuration option.
-`)
-
-	return builder.String()
+type helpFlagValue struct {
+	pflag.Value
+	valueType string
 }
 
-func bucketHelpFlagNames() []string {
-	return []string{
-		"config",
-		"provider",
-		"bucket",
-		"batch-file",
-		"endpoint",
-		"region",
-		"profile",
-		"enable-versioning",
-		"bucket-policy-file",
-		"bucket-policy-template",
-		"create-scoped-credentials",
-		"credential-policy-template",
-		"ovh-service-name",
-		"ovh-storage-policy-role",
-		"ovh-encrypt-data",
-		"ovh-rotate-credentials",
-		"ovh-tag",
-		"delete",
-		"force",
-		"timeout",
-		"output",
-		"dry-run",
-		"help",
+func (value helpFlagValue) Type() string {
+	return value.valueType
+}
+
+func setHelpValueTypes(fs *pflag.FlagSet) {
+	valueTypes := map[string]string{
+		"access-key":                 "ID",
+		"batch-file":                 "PATH",
+		"bucket":                     "NAME",
+		"bucket-policy-file":         "PATH",
+		"bucket-policy-template":     "NAME",
+		"config":                     "PATH",
+		"credential-policy-template": "NAME",
+		"endpoint":                   "URL",
+		"iam-endpoint":               "URL",
+		"iam-path":                   "PATH",
+		"iam-user-name":              "NAME",
+		"iam-user-prefix":            "PREFIX",
+		"output":                     "FORMAT",
+		"ovh-access-token":           "TOKEN",
+		"ovh-api-endpoint":           "URL",
+		"ovh-application-key":        "KEY",
+		"ovh-application-secret":     "SECRET",
+		"ovh-client-id":              "ID",
+		"ovh-client-secret":          "SECRET",
+		"ovh-consumer-key":           "KEY",
+		"ovh-s3-endpoint":            "URL",
+		"ovh-service-name":           "PROJECT_ID",
+		"ovh-storage-policy-role":    "ROLE",
+		"ovh-tag":                    "KEY=VALUE",
+		"ovh-user-role":              "ROLE",
+		"profile":                    "NAME",
+		"provider":                   "NAME",
+		"region":                     "NAME",
+		"secret-key":                 "SECRET",
+		"session-token":              "TOKEN",
+		"timeout":                    "DURATION",
 	}
-}
-
-func flagUsagesForNames(names []string) string {
-	flags := cliFlags{}
-	allFlags := newFlagSet(&flags)
-	filteredFlags := pflag.NewFlagSet(binaryName, pflag.ContinueOnError)
-	filteredFlags.SetOutput(io.Discard)
-	filteredFlags.SortFlags = false
-
-	for _, name := range names {
-		flag := allFlags.Lookup(name)
+	for name, valueType := range valueTypes {
+		flag := fs.Lookup(name)
 		if flag == nil {
 			continue
 		}
-		filteredFlags.AddFlag(flag)
+		flag.Value = helpFlagValue{Value: flag.Value, valueType: valueType}
+		if name == "bucket" || name == "ovh-tag" {
+			flag.DefValue = ""
+		}
 	}
+}
 
-	return filteredFlags.FlagUsagesWrapped(100)
+func bucketUsageText() string {
+	return fmt.Sprintf(`%s bucket workflow help.
+
+Usage:
+  %s --bucket NAME [options]
+  %s --bucket NAME --delete [options]
+  %s --batch-file PATH [options]
+
+Create:
+  %s --bucket app-data --dry-run
+  %s --bucket app-data --create-scoped-credentials --output json
+  %s --provider ovh --bucket app-data --region UK --ovh-service-name PROJECT_ID
+
+Rotate:
+  %s --provider ovh --bucket app-data --ovh-rotate-credentials --output json
+
+Delete:
+  %s --bucket app-data --delete
+  %s --bucket app-data --delete --force --timeout 30m
+
+Bucket workflow options:
+  -b, --bucket NAME            Bucket target. Repeatable.
+      --batch-file PATH        CSV file of bucket targets.
+      --provider NAME          Provider: s3 or ovh. Default: s3.
+      --region NAME            Bucket region.
+      --endpoint URL           S3-compatible endpoint URL.
+      --enable-versioning
+      --create-scoped-credentials
+      --credential-policy-template NAME
+      --bucket-policy-file PATH
+      --bucket-policy-template NAME
+
+OVH bucket options:
+      --ovh-service-name PROJECT_ID
+      --ovh-storage-policy-role ROLE
+      --ovh-encrypt-data
+      --ovh-rotate-credentials
+      --ovh-tag KEY=VALUE
+
+Delete options:
+      --delete                 Delete buckets instead of creating them.
+      --force                  Empty non-empty buckets before delete.
+      --dry-run                Show planned actions without making changes.
+      --timeout DURATION       Overall timeout.
+
+Output and config:
+  -o, --output FORMAT          Output: text or json.
+  -c, --config PATH            JSON config file.
+
+More help:
+  %s --help-full               Show every provider, auth, IAM, and configuration option.
+`, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName, binaryName)
 }
 
 func shouldShowBucketHelp(args []string) bool {

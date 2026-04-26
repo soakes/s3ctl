@@ -105,11 +105,15 @@ jobs:
 
           ./dist/s3ctl | tee /tmp/s3ctl-no-args.txt
           grep -F 'Usage:' /tmp/s3ctl-no-args.txt
-          grep -F 'Examples:' /tmp/s3ctl-no-args.txt
+          grep -F 'Common workflows:' /tmp/s3ctl-no-args.txt
 
           ./dist/s3ctl --help | tee /tmp/s3ctl-help.txt
-          grep -F 'Configuration precedence:' /tmp/s3ctl-help.txt
-          grep -F 'Built-in scoped credential policy templates:' /tmp/s3ctl-help.txt
+          grep -F 'Core options:' /tmp/s3ctl-help.txt
+          grep -F -- '--help-full' /tmp/s3ctl-help.txt
+
+          ./dist/s3ctl --help-full | tee /tmp/s3ctl-help-full.txt
+          grep -F 'Configuration precedence:' /tmp/s3ctl-help-full.txt
+          grep -F 'Built-in scoped credential policy templates:' /tmp/s3ctl-help-full.txt
 
           ./dist/s3ctl --config examples/s3ctl.json --dry-run --output json > /tmp/s3ctl-config.json
           grep -F '"resource_count": 2' /tmp/s3ctl-config.json

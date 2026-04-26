@@ -389,6 +389,9 @@ func TestMainWithEnvShowsHelpWhenRunWithoutArguments(t *testing.T) {
 	if !strings.Contains(stdout.String(), "Usage:") {
 		t.Fatalf("expected usage output, got %q", stdout.String())
 	}
+	if !strings.Contains(stdout.String(), "Common workflows:") {
+		t.Fatalf("expected concise help output, got %q", stdout.String())
+	}
 }
 
 func TestMainWithEnvShowsProfessionalHelpOutput(t *testing.T) {
@@ -404,14 +407,56 @@ func TestMainWithEnvShowsProfessionalHelpOutput(t *testing.T) {
 		t.Fatalf("expected stderr to be empty, got %q", stderr.String())
 	}
 	for _, fragment := range []string{
-		"Examples:",
-		"Standard AWS SDK credential and profile discovery",
-		"Built-in scoped credential policy templates:",
-		"Batch CSV columns:",
+		"Common workflows:",
+		"Core options:",
+		"Bucket options:",
+		"OVHcloud options:",
+		"More help:",
+		"--help-full",
 	} {
 		if !strings.Contains(stdout.String(), fragment) {
 			t.Fatalf("expected help output to contain %q, got %q", fragment, stdout.String())
 		}
+	}
+	for _, fragment := range []string{
+		"stringArray",
+		"Built-in scoped credential policy templates:",
+		"Batch CSV columns:",
+		"Standard AWS SDK credential and profile discovery",
+	} {
+		if strings.Contains(stdout.String(), fragment) {
+			t.Fatalf("expected concise help output to omit %q, got %q", fragment, stdout.String())
+		}
+	}
+}
+
+func TestMainWithEnvShowsFullHelpOutput(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := MainWithEnv([]string{"--help-full"}, map[string]string{}, &stdout, &stderr)
+
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d", exitCode)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected stderr to be empty, got %q", stderr.String())
+	}
+	for _, fragment := range []string{
+		"s3ctl full reference",
+		"--bucket NAME",
+		"--ovh-tag KEY=VALUE",
+		"Configuration precedence:",
+		"Built-in scoped credential policy templates:",
+		"Batch CSV columns:",
+		"Standard AWS SDK credential and profile discovery",
+	} {
+		if !strings.Contains(stdout.String(), fragment) {
+			t.Fatalf("expected full help output to contain %q, got %q", fragment, stdout.String())
+		}
+	}
+	if strings.Contains(stdout.String(), "stringArray") {
+		t.Fatalf("expected full help output to use human-readable placeholders, got %q", stdout.String())
 	}
 }
 
@@ -429,11 +474,12 @@ func TestMainWithEnvShowsContextualBucketHelp(t *testing.T) {
 	}
 	for _, fragment := range []string{
 		"bucket workflow help",
-		"--bucket stringArray",
+		"--bucket NAME",
+		"Bucket workflow options:",
 		"--delete",
 		"--force",
 		"--ovh-rotate-credentials",
-		"Run s3ctl --help for every provider",
+		"s3ctl --help-full",
 	} {
 		if !strings.Contains(stdout.String(), fragment) {
 			t.Fatalf("expected bucket help to contain %q, got %q", fragment, stdout.String())
@@ -441,6 +487,7 @@ func TestMainWithEnvShowsContextualBucketHelp(t *testing.T) {
 	}
 	for _, fragment := range []string{
 		"S3CTL_",
+		"stringArray",
 		"--ovh-client-id",
 		"--access-key",
 		"--iam-endpoint",
