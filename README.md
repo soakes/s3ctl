@@ -1,12 +1,47 @@
-# s3ctl
+# 🪣 s3ctl
+
+> A single-binary CLI for creating S3-compatible buckets and issuing bucket-scoped credentials.
 
 [![Validate](https://img.shields.io/github/actions/workflow/status/soakes/s3ctl/build-and-validate.yml?branch=main&style=flat-square&label=validate)](https://github.com/soakes/s3ctl/actions/workflows/build-and-validate.yml)
 [![Container](https://img.shields.io/github/actions/workflow/status/soakes/s3ctl/container-image.yml?branch=main&style=flat-square&label=container)](https://github.com/soakes/s3ctl/actions/workflows/container-image.yml)
 [![Release](https://img.shields.io/github/v/release/soakes/s3ctl?sort=semver&style=flat-square)](https://github.com/soakes/s3ctl/releases)
+[![APT Repository](https://img.shields.io/badge/APT-signed%20repo-A81D33?style=flat-square&logo=debian&logoColor=white)](https://soakes.github.io/s3ctl/)
 [![GHCR](https://img.shields.io/badge/GHCR-published-2088FF?style=flat-square&logo=github)](https://ghcr.io/soakes/s3ctl)
 [![Go](https://img.shields.io/badge/Go-1.26.2-00ADD8.svg?style=flat-square&logo=go&logoColor=white)](https://go.dev/)
 
-`s3ctl` is a single-binary CLI for provisioning S3 buckets and automatically issuing bucket-scoped access credentials.
+Built for operators who want bucket provisioning to be predictable,
+scriptable, and easy to hand to automation: create buckets, generate scoped
+credentials, rotate keys, delete empty buckets safely, and publish the tool
+through the same release paths every time.
+
+**Quick links:** [📦 Releases](https://github.com/soakes/s3ctl/releases) · [🐳 GHCR](https://ghcr.io/soakes/s3ctl) · [🔐 Release Hub / APT](https://soakes.github.io/s3ctl/) · [🧰 Examples](examples)
+
+## 🧭 Table of Contents
+
+- [📖 Overview](#overview)
+- [✨ Capabilities](#capabilities)
+- [🚀 Quick Start](#quick-start)
+- [📦 Distribution](#distribution)
+- [🖥️ Website Preview](#website-preview)
+- [🗃️ Batch Provisioning](#batch-provisioning)
+- [⚙️ Configuration](#configuration)
+- [🧩 Built-In Templates](#built-in-templates)
+- [🔑 IAM Notes](#iam-notes)
+- [🧹 Deleting Buckets](#deleting-buckets)
+- [☁️ OVHcloud Notes](#ovhcloud-notes)
+- [🐳 Container](#container)
+- [🤖 Maintenance Automation](#maintenance-automation)
+- [🛠️ Development](#development)
+- [🚢 Release Automation](#release-automation)
+
+---
+
+## 📖 Overview
+
+`s3ctl` provisions S3-compatible buckets and automatically issues
+bucket-scoped access credentials. It can work with a normal S3/IAM-compatible
+provider, or with OVHcloud Public Cloud Object Storage where buckets are exposed
+as S3-compatible containers.
 
 It is designed for the common operational workflow:
 
@@ -15,10 +50,34 @@ It is designed for the common operational workflow:
 - optionally apply a bucket policy from a built-in template or JSON file
 - create a fresh access key and secret key for each bucket
 - attach a generated policy so each credential only has access to its own bucket
+- rotate existing OVHcloud S3 credentials by bucket name
 - delete empty buckets safely, or delete non-empty buckets with an explicit force guard
 - drive the same workflow from flags, JSON config, or CSV batch input
 
-## Quick Start
+### First Bucket Checklist
+
+1. Put shared provider settings in `~/.config/s3ctl/config.json`.
+2. Run `s3ctl --bucket app-data --dry-run --output json`.
+3. Confirm the endpoint, region, and credential scope in the plan.
+4. Run `s3ctl --bucket app-data --output json`.
+5. Store the returned access key and secret securely; secrets are only printed once.
+
+---
+
+## ✨ Capabilities
+
+- **Bucket provisioning**: creates one bucket, many buckets, or CSV-driven batches
+- **Scoped credentials**: creates bucket-specific IAM-style users and access keys
+- **OVHcloud support**: creates containers, Public Cloud users, S3 keys, policies, and optional encryption
+- **Credential rotation**: rotates OVHcloud S3 keypairs by bucket/user name
+- **Safe deletion**: deletes empty buckets without `--force` and requires `--force` for non-empty buckets
+- **Automation output**: emits JSON success and error payloads for machine workflows
+- **Distribution**: publishes release archives, Debian packages, a signed APT repository, and GHCR images
+- **Release hygiene**: validates release candidates before promoting the same commit to stable
+
+---
+
+## 🚀 Quick Start
 
 Build locally:
 
@@ -139,7 +198,9 @@ s3ctl \
   --output json
 ```
 
-## Distribution
+---
+
+## 📦 Distribution
 
 Published release channels are designed to cover the normal operator paths:
 
@@ -215,7 +276,9 @@ The Pages site and APT repository are published by workflow. The APT path requir
 repository secrets `APT_GPG_PRIVATE_KEY`, `APT_GPG_KEY_ID`, and optionally
 `APT_GPG_PASSPHRASE` so the repository metadata can be signed for apt-secure.
 
-## Website Preview
+---
+
+## 🖥️ Website Preview
 
 Render the release hub locally with real browser screenshots:
 
@@ -230,7 +293,9 @@ Desktop and mobile captures are written to `website/.captures/`.
 The website is built with Vite and the local preview flow falls back to
 `website/preview-metadata.json` when generated release metadata is not present yet.
 
-## Batch Provisioning
+---
+
+## 🗃️ Batch Provisioning
 
 For bulk runs, the normal pattern is:
 
@@ -256,7 +321,9 @@ app-data,true,bucket-readwrite,true
 logs-archive,true,bucket-readonly,false
 ```
 
-## Configuration
+---
+
+## ⚙️ Configuration
 
 Configuration is resolved in this order:
 
@@ -376,7 +443,9 @@ install -d -m 700 "${XDG_CONFIG_HOME:-$HOME/.config}/s3ctl"
 install -m 600 ./examples/user-config.json "${XDG_CONFIG_HOME:-$HOME/.config}/s3ctl/config.json"
 ```
 
-## Built-In Templates
+---
+
+## 🧩 Built-In Templates
 
 Bucket policy templates:
 
@@ -399,7 +468,9 @@ Configure `iam_user_prefix` or `--iam-user-prefix` when generated user names
 should share a prefix. Configure `iam_path` or `--iam-path` when generated
 users should be created under an IAM path.
 
-## IAM Notes
+---
+
+## 🔑 IAM Notes
 
 Scoped credential provisioning uses the IAM API in addition to the S3 API. The principal running `s3ctl` therefore needs permission to:
 
@@ -411,7 +482,9 @@ Scoped credential provisioning uses the IAM API in addition to the S3 API. The p
 AWS IAM is the default target. When you need an IAM-compatible alternative, use
 `--iam-endpoint` or `iam_endpoint` in JSON config.
 
-## Deleting Buckets
+---
+
+## 🧹 Deleting Buckets
 
 Use `--delete` with one or more `--bucket` values to remove buckets instead of
 creating them. Empty buckets can be deleted without `--force`. Non-empty
@@ -451,7 +524,9 @@ config should be allowed to remove bucket contents before deleting buckets.
 Use `--timeout` or `"timeout": "30m"` for large buckets or slower
 object-storage endpoints. The default timeout is `10m`.
 
-## OVHcloud Notes
+---
+
+## ☁️ OVHcloud Notes
 
 Use `--provider ovh` to create OVHcloud Object Storage through the Public Cloud
 API. OVHcloud calls buckets "containers"; `s3ctl` keeps the CLI wording as
@@ -496,7 +571,7 @@ Optional OVHcloud settings:
   existing OVHcloud container owner instead of creating a new container. Keep it
   out of the normal provisioning config unless every run should be a rotation.
 
-### OVHcloud OAuth2 and IAM Setup
+### 🔐 OVHcloud OAuth2 and IAM Setup
 
 Create the OAuth2 service account first. The official `ovhcloud` CLI is the
 cleanest route:
@@ -615,7 +690,7 @@ If OVHcloud returns `This service does not exist` while the project ID is
 correct, the service account usually cannot see the project yet. Recheck the IAM
 policy identity, resource, and actions.
 
-### OVHcloud Credential Rotation
+### 🔄 OVHcloud Credential Rotation
 
 Use `--ovh-rotate-credentials` or `"ovh_rotate_credentials": true` when a bucket
 already exists and you only want a fresh S3 access key and secret:
@@ -645,7 +720,7 @@ so store the command output securely. If an old key cannot be deleted after the
 new key is created, `s3ctl` still prints the new credentials and includes a
 warning so the stale key can be removed manually.
 
-### OVHcloud Bucket Deletion
+### 🗑️ OVHcloud Bucket Deletion
 
 OVHcloud buckets are containers, but the delete command still uses the bucket
 name:
@@ -687,7 +762,9 @@ secret, and consumer key into `ovh_application_key`, `ovh_application_secret`,
 and `ovh_consumer_key`. To create `ovh_client_id` and `ovh_client_secret`,
 use `POST /me/api/oauth2/client` instead.
 
-## Container
+---
+
+## 🐳 Container
 
 Build locally:
 
@@ -713,7 +790,9 @@ docker run --rm \
   --output json
 ```
 
-## Maintenance Automation
+---
+
+## 🤖 Maintenance Automation
 
 Repository maintenance is automated so the pinned toolchain and delivery inputs do not drift:
 
@@ -725,7 +804,9 @@ Repository maintenance is automated so the pinned toolchain and delivery inputs 
 
 The GitHub Pages release hub is also generated from the latest stable release metadata so operators get copy-ready install commands, checksum links, release assets, and signed APT details from one place.
 
-## Development
+---
+
+## 🛠️ Development
 
 Common targets:
 
@@ -766,7 +847,9 @@ Website validation follows the same principle: the Vite site is checked and buil
 
 The Linux binaries are built with `CGO_ENABLED=0`, so releases are architecture-specific rather than distro-specific and should run across most mainstream distributions for the same CPU family.
 
-## Release Automation
+---
+
+## 🚢 Release Automation
 
 This repository includes:
 
