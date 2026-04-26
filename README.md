@@ -53,6 +53,19 @@ It is designed for the common operational workflow:
 - delete empty buckets safely, or delete non-empty buckets with an explicit force guard
 - drive the same workflow from flags, JSON config, or CSV batch input
 
+```mermaid
+flowchart LR
+  input["Flags, JSON config, or CSV batch"] --> plan["s3ctl builds a per-bucket plan"]
+  plan --> provider{"Provider"}
+  provider -->|s3| s3api["S3 API creates and configures buckets"]
+  provider -->|s3 with scoped credentials| iamapi["IAM API creates users, policies, and access keys"]
+  provider -->|ovh| ovhapi["OVHcloud API creates containers, users, policies, and S3 keys"]
+  s3api --> output["Text or JSON output"]
+  iamapi --> output
+  ovhapi --> output
+  output --> operator["Endpoint, region, and scoped credentials"]
+```
+
 ### ✅ First Bucket Checklist
 
 1. Put shared provider settings in `~/.config/s3ctl/config.json`.
@@ -567,6 +580,23 @@ Optional OVHcloud settings:
   out of the normal provisioning config unless every run should be a rotation.
 
 ### 🔐 OVHcloud OAuth2 and IAM Setup
+
+```mermaid
+flowchart TD
+  admin["OVHcloud account or IAM admin"] --> oauth["Create OAuth2 service account"]
+  admin --> iam["Grant IAM policy on the Public Cloud project"]
+  oauth --> config["Add client ID and secret to s3ctl config"]
+  project["Public Cloud project ID"] --> config
+  iam --> access["Service account can manage Object Storage resources"]
+  access --> run["s3ctl --provider ovh --bucket app-data"]
+  config --> run
+  run --> user["Create bucket-dedicated Public Cloud user"]
+  run --> bucket["Create Object Storage container in region"]
+  run --> keys["Create S3 access key and secret"]
+  user --> policy["Attach container policy role"]
+  bucket --> policy
+  keys --> result["Return endpoint, region, and credentials"]
+```
 
 Create the OAuth2 service account first. The official `ovhcloud` CLI is the
 cleanest route:
