@@ -582,7 +582,7 @@ func newFlagSet(flags *cliFlags) *pflag.FlagSet {
 	fs.StringVar(&flags.OVHS3Endpoint, "ovh-s3-endpoint", "", "Override the returned OVHcloud S3 endpoint URL")
 	fs.StringVar(&flags.OVHServiceName, "ovh-service-name", "", "OVHcloud Public Cloud project service name for the OVH provider")
 	fs.StringVar(&flags.OVHUserRole, "ovh-user-role", defaultOVHUserRole, "OVHcloud Public Cloud user role for created object storage users")
-	fs.StringVar(&flags.OVHStoragePolicyRole, "ovh-storage-policy-role", defaultOVHStoragePolicyRole, "OVHcloud container policy role: admin, deny, readOnly, or readWrite")
+	fs.StringVar(&flags.OVHStoragePolicyRole, "ovh-storage-policy-role", defaultOVHStoragePolicyRole, "OVHcloud access policy role: admin, deny, readOnly, readWrite, or replication")
 	fs.BoolVar(&flags.OVHEncryptData, "ovh-encrypt-data", false, "Enable OVHcloud server-side encryption with OVH-managed keys")
 	fs.BoolVar(&flags.OVHRotateCredentials, "ovh-rotate-credentials", false, "Rotate existing OVHcloud S3 credentials for each bucket instead of creating containers")
 	fs.BoolVar(&flags.OVHRepairPolicies, "ovh-repair-policies", false, "Apply scoped OVHcloud S3 and container policies to existing bucket users without rotating credentials")

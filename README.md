@@ -575,10 +575,12 @@ bucket because the resulting credentials are S3-compatible.
 
 The OVHcloud provider creates one Public Cloud user and one S3 credential pair
 per bucket, creates the container in `--region`, attaches the user to that
-container with `--ovh-storage-policy-role` (`readWrite` by default), and imports
-an OVHcloud S3 user policy scoped to that bucket. It does not apply S3 bucket
-policy documents; access is controlled through OVHcloud container profiles and
-S3 user policies.
+container with the matching OVHcloud container profile (`readWrite` by default),
+and imports an OVHcloud S3 user policy scoped to that bucket. It does not apply
+S3 bucket policy documents; access is controlled through OVHcloud container
+profiles and S3 user policies. The `replication` policy profile uses OVHcloud's
+native `admin` container profile plus an imported S3 user policy that keeps
+access scoped to the bucket and denies bucket-administration writes.
 
 The generated OVHcloud user policy denies `s3:ListAllMyBuckets` so a bucket key
 cannot enumerate every bucket in the project. Use `mc ls alias/bucket-name` to
@@ -616,7 +618,11 @@ Optional OVHcloud settings:
 - `ovh_s3_endpoint`: override the returned S3 endpoint when the default
   `https://s3.<region>.io.cloud.ovh.net` form is not right for your project
 - `ovh_user_role`: defaults to `objectstore_operator`
-- `ovh_storage_policy_role`: one of `admin`, `deny`, `readOnly`, or `readWrite`
+- `ovh_storage_policy_role`: one of `admin`, `deny`, `readOnly`, `readWrite`, or
+  `replication`. Use `replication` only for buckets that act as replication
+  targets; it allows bucket versioning/configuration reads and replication
+  target object actions supported by OVHcloud while remaining scoped to the
+  bucket.
 - `ovh_encrypt_data`: set to `true` to enable OVHcloud server-side encryption
   with OVH-managed keys (`AES256` / SSE-OMK). When explicitly set to `false`,
   `s3ctl` requests OVHcloud `plaintext` container storage.
@@ -820,6 +826,18 @@ bucket users in one run. The command finds each bucket's `ownerId`, verifies the
 owner still looks bucket-dedicated, reapplies the OVHcloud container profile,
 and imports a generated S3 user policy for that bucket. It does not create,
 delete, or rotate S3 access keys.
+
+To widen a single bucket for replication target access without changing other
+buckets, repair only that bucket with the `replication` profile:
+
+```bash
+s3ctl \
+  --provider ovh \
+  --bucket netspeedy-archives \
+  --ovh-storage-policy-role replication \
+  --ovh-repair-policies \
+  --output json
+```
 
 For already exposed credentials, prefer rotation after policy repair so old keys
 that may have been copied elsewhere are removed:

@@ -241,6 +241,55 @@ func TestBuildOVHUserS3PolicyAllowsVersionListingForDeletes(t *testing.T) {
 	}
 }
 
+func TestBuildOVHUserS3PolicyAllowsReplicationProfile(t *testing.T) {
+	policy, err := buildOVHUserS3Policy("app-data", "replication", []string{"other-data"})
+	if err != nil {
+		t.Fatalf("buildOVHUserS3Policy returned error: %v", err)
+	}
+
+	assertOVHUserS3PolicyScopedToBucket(t, policy, "app-data", []string{"other-data"})
+
+	var document ovhUserS3PolicyDocument
+	if err := json.Unmarshal([]byte(policy), &document); err != nil {
+		t.Fatalf("json.Unmarshal policy returned error: %v", err)
+	}
+
+	bucketARN := "arn:aws:s3:::app-data"
+	objectARN := bucketARN + "/*"
+	for _, action := range []string{
+		"s3:GetBucketObjectLockConfiguration",
+		"s3:GetBucketVersioning",
+		"s3:GetEncryptionConfiguration",
+		"s3:GetReplicationConfiguration",
+	} {
+		if !ovhPolicyAllowsActionOnResource(document, action, bucketARN) {
+			t.Fatalf("expected replication policy to allow %s on bucket, got %s", action, policy)
+		}
+		if ovhPolicyDeniesActionOnResource(document, action, bucketARN) {
+			t.Fatalf("expected replication policy not to deny %s on bucket, got %s", action, policy)
+		}
+	}
+	for _, action := range []string{
+		"s3:GetObjectTagging",
+		"s3:PutObjectLegalHold",
+		"s3:PutObjectRetention",
+		"s3:PutObjectTagging",
+	} {
+		if !ovhPolicyAllowsActionOnResource(document, action, objectARN) {
+			t.Fatalf("expected replication policy to allow %s on objects, got %s", action, policy)
+		}
+		if ovhPolicyDeniesActionOnResource(document, action, objectARN) {
+			t.Fatalf("expected replication policy not to deny %s on objects, got %s", action, policy)
+		}
+	}
+}
+
+func TestOVHReplicationProfileUsesAdminContainerRole(t *testing.T) {
+	if got := ovhContainerPolicyRole("replication"); got != "admin" {
+		t.Fatalf("expected replication profile to use admin container policy role, got %q", got)
+	}
+}
+
 func TestBuildOVHUserS3PolicyReadOnlyDeniesWritesOnOwnedBucket(t *testing.T) {
 	policy, err := buildOVHUserS3Policy("app-data", "readOnly", nil)
 	if err != nil {

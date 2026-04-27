@@ -41,6 +41,28 @@ var ovhS3PolicyObjectWriteActions = []string{
 	"s3:PutObject",
 }
 
+var ovhS3PolicyReplicationActions = []string{
+	"s3:AbortMultipartUpload",
+	"s3:DeleteObject",
+	"s3:GetBucketLocation",
+	"s3:GetBucketObjectLockConfiguration",
+	"s3:GetBucketVersioning",
+	"s3:GetEncryptionConfiguration",
+	"s3:GetObject",
+	"s3:GetObjectAcl",
+	"s3:GetObjectTagging",
+	"s3:GetReplicationConfiguration",
+	"s3:ListBucket",
+	"s3:ListBucketMultipartUploads",
+	"s3:ListBucketVersions",
+	"s3:ListMultipartUploadParts",
+	"s3:PutObject",
+	"s3:PutObjectAcl",
+	"s3:PutObjectLegalHold",
+	"s3:PutObjectRetention",
+	"s3:PutObjectTagging",
+}
+
 var ovhS3PolicyScopedActions = []string{
 	"s3:AbortMultipartUpload",
 	"s3:BypassGovernanceRetention",
@@ -177,7 +199,7 @@ func validateOVHSettings(cfg settings) error {
 		return err
 	}
 	if !validOVHStoragePolicyRole(normalizeOVHStoragePolicyRole(cfg.OVHStoragePolicyRole)) {
-		return fmt.Errorf("--ovh-storage-policy-role must be one of admin, deny, readOnly, or readWrite, got %q", cfg.OVHStoragePolicyRole)
+		return fmt.Errorf("--ovh-storage-policy-role must be one of admin, deny, readOnly, readWrite, or replication, got %q", cfg.OVHStoragePolicyRole)
 	}
 	return nil
 }
@@ -957,7 +979,7 @@ func createOVHContainer(ctx context.Context, client ovhAPI, cfg settings, target
 }
 
 func attachOVHContainerPolicy(ctx context.Context, client ovhAPI, cfg settings, bucket, userID string) error {
-	role := normalizeOVHStoragePolicyRole(cfg.OVHStoragePolicyRole)
+	role := ovhContainerPolicyRole(cfg.OVHStoragePolicyRole)
 	body := ovhAddContainerPolicy{RoleName: role}
 	path := ovhRegionStoragePath(cfg, bucket, "policy", userID)
 	if err := client.PostWithContext(ctx, path, body, nil); err != nil {
@@ -1017,6 +1039,22 @@ func buildOVHUserS3Policy(bucket, role string, deniedBuckets []string) (string, 
 		statements = append(statements,
 			ovhUserS3PolicyStatement{
 				Sid:      "AllowBucketReadWrite",
+				Effect:   "Allow",
+				Action:   allowedActions,
+				Resource: bucketResources,
+			},
+			ovhUserS3PolicyStatement{
+				Sid:      "DenyBucketAdministration",
+				Effect:   "Deny",
+				Action:   deniedOVHUserS3Actions(allowedActions),
+				Resource: bucketResources,
+			},
+		)
+	case "replication":
+		allowedActions := append([]string{}, ovhS3PolicyReplicationActions...)
+		statements = append(statements,
+			ovhUserS3PolicyStatement{
+				Sid:      "AllowBucketReplication",
 				Effect:   "Allow",
 				Action:   allowedActions,
 				Resource: bucketResources,
@@ -1189,6 +1227,8 @@ func normalizeOVHStoragePolicyRole(role string) string {
 		return "readOnly"
 	case "readwrite":
 		return "readWrite"
+	case "replication":
+		return "replication"
 	default:
 		return strings.TrimSpace(role)
 	}
@@ -1196,9 +1236,20 @@ func normalizeOVHStoragePolicyRole(role string) string {
 
 func validOVHStoragePolicyRole(role string) bool {
 	switch role {
-	case "admin", "deny", "readOnly", "readWrite":
+	case "admin", "deny", "readOnly", "readWrite", "replication":
 		return true
 	default:
 		return false
+	}
+}
+
+func ovhContainerPolicyRole(role string) string {
+	switch normalizeOVHStoragePolicyRole(role) {
+	case "replication":
+		// OVHcloud's native readWrite profile does not allow versioning reads,
+		// which replication targets need during remote validation.
+		return "admin"
+	default:
+		return normalizeOVHStoragePolicyRole(role)
 	}
 }
