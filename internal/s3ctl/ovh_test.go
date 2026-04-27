@@ -905,6 +905,57 @@ func TestProvisionWithOVHDeleteWaitsForTemporaryCredentials(t *testing.T) {
 	}
 }
 
+func TestProvisionWithOVHDeleteRetriesAccessDeniedAfterCredentialsReady(t *testing.T) {
+	previousPollPeriod := ovhS3CredentialReadyPollPeriod
+	previousTimeout := ovhS3CredentialReadyTimeout
+	ovhS3CredentialReadyPollPeriod = time.Millisecond
+	ovhS3CredentialReadyTimeout = 100 * time.Millisecond
+	t.Cleanup(func() {
+		ovhS3CredentialReadyPollPeriod = previousPollPeriod
+		ovhS3CredentialReadyTimeout = previousTimeout
+	})
+
+	ovhClient := &mockOVHClient{
+		containersByPath: map[string]ovhStorageContainer{
+			"/cloud/project/project123/region/GRA/storage/app-data": {Name: "app-data", OwnerID: 1234},
+		},
+		getUserByPath: map[string]ovhUserDetail{
+			"/cloud/project/project123/user/1234": {ID: 1234, Description: "app-data", Username: "user-abcd", Status: "ok"},
+		},
+	}
+	withMockOVHClient(t, ovhClient)
+
+	s3Client := &mockS3Client{
+		listVersionsErrs: []error{
+			nil,
+			&smithy.GenericAPIError{Code: "AccessDenied", Message: "Access Denied"},
+		},
+	}
+	withMockS3Client(t, s3Client)
+
+	result, err := provision(context.Background(), settings{
+		Provider:             providerOVH,
+		Buckets:              []string{"app-data"},
+		Region:               "GRA",
+		OVHServiceName:       "project123",
+		OVHUserRole:          defaultOVHUserRole,
+		OVHStoragePolicyRole: defaultOVHStoragePolicyRole,
+		DeleteBucket:         true,
+		Force:                true,
+	})
+	if err != nil {
+		t.Fatalf("provision returned error: %v", err)
+	}
+	if !result.Resources[0].Deleted {
+		t.Fatalf("expected delete to continue after transient cleanup access denied, got %#v", result.Resources[0])
+	}
+
+	wantS3Calls := []string{"ListObjectVersions", "ListObjectVersions", "ListObjectVersions", "ListObjectsV2"}
+	if !reflect.DeepEqual(s3Client.calls, wantS3Calls) {
+		t.Fatalf("unexpected temporary S3 calls:\nwant %#v\ngot  %#v", wantS3Calls, s3Client.calls)
+	}
+}
+
 func TestProvisionWithOVHDeleteEmptyContainerWithoutForce(t *testing.T) {
 	ovhClient := &mockOVHClient{
 		containersByPath: map[string]ovhStorageContainer{

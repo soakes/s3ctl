@@ -428,13 +428,13 @@ func deleteOVHBuckets(ctx context.Context, cfg settings, targets []provisionTarg
 		}
 
 		if cfg.Force {
-			deletedObjects, err := emptyS3Bucket(ctx, s3Client, target.Bucket)
+			deletedObjects, err := emptyOVHS3Bucket(ctx, s3Client, target.Bucket)
 			if err != nil {
 				return provisionResult{}, wrapCleanupError(err, cleanupOVHS3Credentials(ctx, client, cfg, user.ID, temporaryCredentials.Access))
 			}
 			resource.ObjectsDeleted = deletedObjects
 		} else {
-			if err := ensureS3BucketEmpty(ctx, s3Client, target.Bucket); err != nil {
+			if err := ensureOVHS3BucketEmpty(ctx, s3Client, target.Bucket); err != nil {
 				return provisionResult{}, wrapCleanupError(err, cleanupOVHS3Credentials(ctx, client, cfg, user.ID, temporaryCredentials.Access))
 			}
 		}
@@ -501,6 +501,57 @@ func waitForOVHS3CredentialsReady(ctx context.Context, client s3API, bucket stri
 				return fmt.Errorf("OVH S3 credentials for bucket %q were not ready after %s: %w", bucket, ovhS3CredentialReadyTimeout, lastErr)
 			}
 			return fmt.Errorf("OVH S3 credentials for bucket %q were not ready after %s: %w", bucket, ovhS3CredentialReadyTimeout, readyCtx.Err())
+		case <-timer.C:
+		}
+	}
+}
+
+func ensureOVHS3BucketEmpty(ctx context.Context, client s3API, bucket string) error {
+	return retryOVHS3AccessDenied(ctx, bucket, "prove bucket is empty", func(retryCtx context.Context) error {
+		return ensureS3BucketEmpty(retryCtx, client, bucket)
+	})
+}
+
+func emptyOVHS3Bucket(ctx context.Context, client s3API, bucket string) (int, error) {
+	deleted := 0
+	err := retryOVHS3AccessDenied(ctx, bucket, "empty bucket", func(retryCtx context.Context) error {
+		count, err := emptyS3Bucket(retryCtx, client, bucket)
+		if err == nil {
+			deleted = count
+		}
+		return err
+	})
+	return deleted, err
+}
+
+func retryOVHS3AccessDenied(ctx context.Context, bucket, operation string, run func(context.Context) error) error {
+	deadline := time.Now().Add(ovhS3CredentialReadyTimeout)
+	var lastErr error
+	for {
+		if err := run(ctx); err != nil {
+			lastErr = err
+			if !isS3AccessDenied(err) {
+				return err
+			}
+		} else {
+			return nil
+		}
+
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return fmt.Errorf("OVH S3 credentials for bucket %q could not %s after %s: %w", bucket, operation, ovhS3CredentialReadyTimeout, lastErr)
+		}
+		delay := min(ovhS3CredentialReadyPollPeriod, remaining)
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			return fmt.Errorf("OVH S3 credentials for bucket %q could not %s: %w", bucket, operation, ctx.Err())
 		case <-timer.C:
 		}
 	}
