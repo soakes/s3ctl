@@ -20,6 +20,7 @@ type mockS3Client struct {
 	configs               []settings
 	headBucketErr         error
 	listVersionsOutputs   []*s3.ListObjectVersionsOutput
+	listVersionsErrs      []error
 	listObjectsV2Outputs  []*s3.ListObjectsV2Output
 	deleteObjectsOutputs  []*s3.DeleteObjectsOutput
 	deleteBucketErr       error
@@ -53,6 +54,13 @@ func (m *mockS3Client) PutBucketPolicy(context.Context, *s3.PutBucketPolicyInput
 
 func (m *mockS3Client) ListObjectVersions(context.Context, *s3.ListObjectVersionsInput, ...func(*s3.Options)) (*s3.ListObjectVersionsOutput, error) {
 	m.calls = append(m.calls, "ListObjectVersions")
+	if len(m.listVersionsErrs) > 0 {
+		err := m.listVersionsErrs[0]
+		m.listVersionsErrs = m.listVersionsErrs[1:]
+		if err != nil {
+			return nil, err
+		}
+	}
 	if len(m.listVersionsOutputs) == 0 {
 		return &s3.ListObjectVersionsOutput{}, nil
 	}

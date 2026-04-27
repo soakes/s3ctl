@@ -10,10 +10,12 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/aws/smithy-go"
 	ovhapi "github.com/ovh/go-ovh/ovh"
 )
 
@@ -183,6 +185,18 @@ func ovhPolicyDeniesActionOnResource(document ovhUserS3PolicyDocument, action, r
 	return false
 }
 
+func ovhPolicyAllowsActionOnResource(document ovhUserS3PolicyDocument, action, resource string) bool {
+	for _, statement := range document.Statement {
+		if statement.Effect != "Allow" || !containsString(statement.Resource, resource) {
+			continue
+		}
+		if containsString(statement.Action, action) || containsString(statement.Action, "s3:*") {
+			return true
+		}
+	}
+	return false
+}
+
 func containsString(values []string, want string) bool {
 	for _, value := range values {
 		if value == want {
@@ -205,6 +219,26 @@ func TestBuildOVHUserS3PolicyScopesAccessToOneBucket(t *testing.T) {
 		"jellyfin-k8s-data-backup-sshn",
 		"radarr-k8s-data-backup-sshn",
 	})
+}
+
+func TestBuildOVHUserS3PolicyAllowsVersionListingForDeletes(t *testing.T) {
+	policy, err := buildOVHUserS3Policy("app-data", "readWrite", nil)
+	if err != nil {
+		t.Fatalf("buildOVHUserS3Policy returned error: %v", err)
+	}
+
+	var document ovhUserS3PolicyDocument
+	if err := json.Unmarshal([]byte(policy), &document); err != nil {
+		t.Fatalf("json.Unmarshal policy returned error: %v", err)
+	}
+
+	bucketARN := "arn:aws:s3:::app-data"
+	if !ovhPolicyAllowsActionOnResource(document, "s3:ListBucketVersions", bucketARN) {
+		t.Fatalf("expected readWrite policy to allow version listing for bucket deletes, got %s", policy)
+	}
+	if ovhPolicyDeniesActionOnResource(document, "s3:ListBucketVersions", bucketARN) {
+		t.Fatalf("expected readWrite policy not to deny version listing, got %s", policy)
+	}
 }
 
 func TestBuildOVHUserS3PolicyReadOnlyDeniesWritesOnOwnedBucket(t *testing.T) {
@@ -801,6 +835,8 @@ func TestProvisionWithOVHDeleteEmptiesContainerAndDeletesUser(t *testing.T) {
 	wantPaths := []string{
 		"GET /cloud/project/project123/region/GRA/storage/app-data",
 		"GET /cloud/project/project123/user/1234",
+		"POST /cloud/project/project123/region/GRA/storage/app-data/policy/1234",
+		"POST /cloud/project/project123/user/1234/policy",
 		"GET /cloud/project/project123/user/1234/s3Credentials",
 		"POST /cloud/project/project123/user/1234/s3Credentials",
 		"DELETE /cloud/project/project123/region/GRA/storage/app-data",
@@ -813,7 +849,57 @@ func TestProvisionWithOVHDeleteEmptiesContainerAndDeletesUser(t *testing.T) {
 		t.Fatalf("unexpected OVH API calls:\nwant %#v\ngot  %#v", wantPaths, gotPaths)
 	}
 
-	wantS3Calls := []string{"ListObjectVersions", "ListObjectsV2"}
+	wantS3Calls := []string{"ListObjectVersions", "ListObjectVersions", "ListObjectsV2"}
+	if !reflect.DeepEqual(s3Client.calls, wantS3Calls) {
+		t.Fatalf("unexpected temporary S3 calls:\nwant %#v\ngot  %#v", wantS3Calls, s3Client.calls)
+	}
+}
+
+func TestProvisionWithOVHDeleteWaitsForTemporaryCredentials(t *testing.T) {
+	previousPollPeriod := ovhS3CredentialReadyPollPeriod
+	previousTimeout := ovhS3CredentialReadyTimeout
+	ovhS3CredentialReadyPollPeriod = time.Millisecond
+	ovhS3CredentialReadyTimeout = 100 * time.Millisecond
+	t.Cleanup(func() {
+		ovhS3CredentialReadyPollPeriod = previousPollPeriod
+		ovhS3CredentialReadyTimeout = previousTimeout
+	})
+
+	ovhClient := &mockOVHClient{
+		containersByPath: map[string]ovhStorageContainer{
+			"/cloud/project/project123/region/GRA/storage/app-data": {Name: "app-data", OwnerID: 1234},
+		},
+		getUserByPath: map[string]ovhUserDetail{
+			"/cloud/project/project123/user/1234": {ID: 1234, Description: "app-data", Username: "user-abcd", Status: "ok"},
+		},
+	}
+	withMockOVHClient(t, ovhClient)
+
+	s3Client := &mockS3Client{
+		listVersionsErrs: []error{
+			&smithy.GenericAPIError{Code: "AccessDenied", Message: "Access Denied"},
+		},
+	}
+	withMockS3Client(t, s3Client)
+
+	result, err := provision(context.Background(), settings{
+		Provider:             providerOVH,
+		Buckets:              []string{"app-data"},
+		Region:               "GRA",
+		OVHServiceName:       "project123",
+		OVHUserRole:          defaultOVHUserRole,
+		OVHStoragePolicyRole: defaultOVHStoragePolicyRole,
+		DeleteBucket:         true,
+		Force:                true,
+	})
+	if err != nil {
+		t.Fatalf("provision returned error: %v", err)
+	}
+	if !result.Resources[0].Deleted {
+		t.Fatalf("expected delete to continue after temporary credentials became ready, got %#v", result.Resources[0])
+	}
+
+	wantS3Calls := []string{"ListObjectVersions", "ListObjectVersions", "ListObjectVersions", "ListObjectsV2"}
 	if !reflect.DeepEqual(s3Client.calls, wantS3Calls) {
 		t.Fatalf("unexpected temporary S3 calls:\nwant %#v\ngot  %#v", wantS3Calls, s3Client.calls)
 	}
@@ -856,7 +942,7 @@ func TestProvisionWithOVHDeleteEmptyContainerWithoutForce(t *testing.T) {
 		t.Fatalf("expected empty OVH bucket delete without force, got %#v", resource)
 	}
 
-	wantS3Calls := []string{"ListObjectVersions", "ListObjectsV2"}
+	wantS3Calls := []string{"ListObjectVersions", "ListObjectVersions", "ListObjectsV2"}
 	if !reflect.DeepEqual(s3Client.calls, wantS3Calls) {
 		t.Fatalf("unexpected temporary S3 calls:\nwant %#v\ngot  %#v", wantS3Calls, s3Client.calls)
 	}
@@ -903,6 +989,8 @@ func TestProvisionWithOVHDeleteRefusesNonEmptyContainerWithoutForce(t *testing.T
 	wantPaths := []string{
 		"GET /cloud/project/project123/region/GRA/storage/app-data",
 		"GET /cloud/project/project123/user/1234",
+		"POST /cloud/project/project123/region/GRA/storage/app-data/policy/1234",
+		"POST /cloud/project/project123/user/1234/policy",
 		"GET /cloud/project/project123/user/1234/s3Credentials",
 		"POST /cloud/project/project123/user/1234/s3Credentials",
 		"DELETE /cloud/project/project123/user/1234/s3Credentials/OVHACCESS",
@@ -911,7 +999,7 @@ func TestProvisionWithOVHDeleteRefusesNonEmptyContainerWithoutForce(t *testing.T
 		t.Fatalf("unexpected OVH API calls:\nwant %#v\ngot  %#v", wantPaths, gotPaths)
 	}
 
-	wantS3Calls := []string{"ListObjectVersions", "ListObjectsV2"}
+	wantS3Calls := []string{"ListObjectVersions", "ListObjectVersions", "ListObjectsV2"}
 	if !reflect.DeepEqual(s3Client.calls, wantS3Calls) {
 		t.Fatalf("unexpected temporary S3 calls:\nwant %#v\ngot  %#v", wantS3Calls, s3Client.calls)
 	}

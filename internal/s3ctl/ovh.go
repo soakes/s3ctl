@@ -21,11 +21,17 @@ const (
 	ovhUserReadyPollPeriod              = 2 * time.Second
 )
 
+var (
+	ovhS3CredentialReadyPollPeriod = 2 * time.Second
+	ovhS3CredentialReadyTimeout    = 1 * time.Minute
+)
+
 var ovhS3PolicyReadActions = []string{
 	"s3:GetBucketLocation",
 	"s3:GetObject",
 	"s3:ListBucket",
 	"s3:ListBucketMultipartUploads",
+	"s3:ListBucketVersions",
 	"s3:ListMultipartUploadParts",
 }
 
@@ -393,6 +399,15 @@ func deleteOVHBuckets(ctx context.Context, cfg settings, targets []provisionTarg
 			return provisionResult{}, fmt.Errorf("failed waiting for OVH user %d for bucket %q before delete: %w", user.ID, target.Bucket, err)
 		}
 
+		userID := strconv.FormatInt(user.ID, 10)
+		if err := attachOVHContainerPolicy(ctx, client, cfg, target.Bucket, userID); err != nil {
+			return provisionResult{}, err
+		}
+		if err := applyOVHUserS3Policy(ctx, client, cfg, target.Bucket, user.ID, otherOVHTargetBuckets(targets, target.Bucket)); err != nil {
+			return provisionResult{}, err
+		}
+		resource.AccessPolicyApplied = true
+
 		existingCredentials, err := listOVHS3Credentials(ctx, client, cfg, user.ID, target.Bucket)
 		if err != nil {
 			return provisionResult{}, err
@@ -405,6 +420,10 @@ func deleteOVHBuckets(ctx context.Context, cfg settings, targets []provisionTarg
 
 		s3Client, err := newOVHS3Client(ctx, cfg, endpoint, temporaryCredentials)
 		if err != nil {
+			return provisionResult{}, wrapCleanupError(err, cleanupOVHS3Credentials(ctx, client, cfg, user.ID, temporaryCredentials.Access))
+		}
+
+		if err := waitForOVHS3CredentialsReady(ctx, s3Client, target.Bucket); err != nil {
 			return provisionResult{}, wrapCleanupError(err, cleanupOVHS3Credentials(ctx, client, cfg, user.ID, temporaryCredentials.Access))
 		}
 
@@ -452,6 +471,39 @@ func newOVHS3Client(ctx context.Context, cfg settings, endpoint string, credenti
 		return nil, fmt.Errorf("failed to create temporary OVH S3 client for bucket cleanup: %w", err)
 	}
 	return client, nil
+}
+
+func waitForOVHS3CredentialsReady(ctx context.Context, client s3API, bucket string) error {
+	readyCtx, cancel := context.WithTimeout(ctx, ovhS3CredentialReadyTimeout)
+	defer cancel()
+
+	var lastErr error
+	for {
+		if _, err := s3BucketHasObjectVersions(readyCtx, client, bucket); err != nil {
+			lastErr = err
+			if !isS3AccessDenied(err) {
+				return err
+			}
+		} else {
+			return nil
+		}
+
+		timer := time.NewTimer(ovhS3CredentialReadyPollPeriod)
+		select {
+		case <-readyCtx.Done():
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			if lastErr != nil {
+				return fmt.Errorf("OVH S3 credentials for bucket %q were not ready after %s: %w", bucket, ovhS3CredentialReadyTimeout, lastErr)
+			}
+			return fmt.Errorf("OVH S3 credentials for bucket %q were not ready after %s: %w", bucket, ovhS3CredentialReadyTimeout, readyCtx.Err())
+		case <-timer.C:
+		}
+	}
 }
 
 func appendOVHCredential(existing []ovhS3Credentials, access string) []ovhS3Credentials {

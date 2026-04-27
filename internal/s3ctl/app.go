@@ -1911,6 +1911,26 @@ func isUnsupportedObjectVersionListing(err error) bool {
 	return false
 }
 
+func isS3AccessDenied(err error) bool {
+	var responseErr *smithyhttp.ResponseError
+	if errors.As(err, &responseErr) {
+		switch responseErr.HTTPStatusCode() {
+		case http.StatusUnauthorized, http.StatusForbidden:
+			return true
+		}
+	}
+
+	var apiErr smithy.APIError
+	if errors.As(err, &apiErr) {
+		switch apiErr.ErrorCode() {
+		case "AccessDenied", "AllAccessDisabled", "InvalidAccessKeyId", "InvalidToken", "SignatureDoesNotMatch":
+			return true
+		}
+	}
+
+	return false
+}
+
 func resolveBucketPolicy(target provisionTarget) (string, string, error) {
 	if target.BucketPolicyFile != "" {
 		data, err := os.ReadFile(target.BucketPolicyFile)
