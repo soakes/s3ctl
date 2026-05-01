@@ -3,7 +3,7 @@ name: Dependabot Auto Merge
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 2 * * 0"
+    - cron: "0 2 * * *"
   workflow_run:
     workflows:
       - Build and Validate
@@ -15,8 +15,10 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
+  actions: read
   checks: read
   contents: write
+  issues: write
   pull-requests: write
   statuses: read
 
@@ -90,8 +92,34 @@ jobs:
               --workflow "Build and Validate" \
               --limit 100 \
               --json headSha,event,conclusion,url \
-              --jq '.[] | select(.event == "pull_request" and .headSha == "'"${head_sha}"'" and .conclusion == "success") | .url' \
+              | jq -r --arg head_sha "${head_sha}" ".[] | select(.event == \"pull_request\" and .headSha == \$head_sha and .conclusion == \"success\") | .url" \
               | head -n1
+          }
+
+          request_dependabot_rebase() {
+            local pr_number="$1"
+            local pr_json="$2"
+            local head_sha="$3"
+            local reason="$4"
+            local marker
+            local comment_body
+            local comment_output
+
+            marker="<!-- s3ctl-dependabot-auto-merge:rebase:${head_sha} -->"
+
+            if jq -e --arg marker "${marker}" ".comments[]?.body | contains(\$marker)" <<<"${pr_json}" >/dev/null; then
+              printf 'already-requested'
+              return 0
+            fi
+
+            comment_body="$(printf '@dependabot rebase\n\n%s\n\n%s\n' "${reason}" "${marker}")"
+            if comment_output="$(gh pr comment "${pr_number}" --body "${comment_body}" 2>&1)"; then
+              printf 'requested'
+              return 0
+            fi
+
+            printf 'failed: %s' "$(normalize_detail "${comment_output}")"
+            return 1
           }
 
           {
@@ -103,7 +131,11 @@ jobs:
           while IFS= read -r pr_number; do
             [ -n "${pr_number}" ] || continue
 
-            pr_json="$(gh pr view "${pr_number}" --json author,state,isDraft,baseRefName,headRefOid,reviewDecision,url,title)"
+            if ! pr_json="$(gh pr view "${pr_number}" --json author,state,isDraft,baseRefName,headRefOid,reviewDecision,url,title,mergeable,mergeStateStatus,statusCheckRollup,comments)"; then
+              printf '| #%s | skipped | Pull request could not be read; it may have closed after the candidate list was built. |\n' "${pr_number}" >> "${GITHUB_STEP_SUMMARY}"
+              continue
+            fi
+
             author="$(jq -r '.author.login // ""' <<<"${pr_json}")"
             state="$(jq -r '.state' <<<"${pr_json}")"
             draft="$(jq -r '.isDraft' <<<"${pr_json}")"
@@ -112,6 +144,8 @@ jobs:
             review_decision="$(jq -r '.reviewDecision // ""' <<<"${pr_json}")"
             url="$(jq -r '.url' <<<"${pr_json}")"
             title="$(jq -r '.title' <<<"${pr_json}")"
+            mergeable="$(jq -r '.mergeable // ""' <<<"${pr_json}")"
+            merge_state="$(jq -r '.mergeStateStatus // ""' <<<"${pr_json}")"
 
             if [ "${author}" != "dependabot[bot]" ] && [ "${author}" != "dependabot" ] && [ "${author}" != "app/dependabot" ]; then
               printf '| [#%s](%s) | skipped | Not authored by Dependabot. |\n' "${pr_number}" "${url}" >> "${GITHUB_STEP_SUMMARY}"
@@ -119,12 +153,26 @@ jobs:
             fi
 
             if [ "${state}" != "OPEN" ] || [ "${draft}" != "false" ] || [ "${base_ref}" != "${DEFAULT_BRANCH}" ]; then
-              printf '| [#%s](%s) | skipped | Not an open, ready pull request against `%s`. |\n' "${pr_number}" "${url}" "${DEFAULT_BRANCH}" >> "${GITHUB_STEP_SUMMARY}"
+              printf '| [#%s](%s) | skipped | Not an open, ready pull request against %s. |\n' "${pr_number}" "${url}" "${DEFAULT_BRANCH}" >> "${GITHUB_STEP_SUMMARY}"
               continue
             fi
 
             if [ -z "${head_sha}" ]; then
               printf '| [#%s](%s) | skipped | Could not resolve the current PR head SHA. |\n' "${pr_number}" "${url}" >> "${GITHUB_STEP_SUMMARY}"
+              continue
+            fi
+
+            if [ "${mergeable}" = "CONFLICTING" ] || [ "${merge_state}" = "DIRTY" ]; then
+              rebase_reason="This Dependabot pull request conflicts with ${DEFAULT_BRANCH}, so automated merge is waiting for Dependabot to refresh the branch."
+              if rebase_result="$(request_dependabot_rebase "${pr_number}" "${pr_json}" "${head_sha}" "${rebase_reason}")"; then
+                if [ "${rebase_result}" = "already-requested" ]; then
+                  printf '| [#%s](%s) | waiting | Pull request conflicts with %s; a Dependabot rebase was already requested for the current head revision. |\n' "${pr_number}" "${url}" "${DEFAULT_BRANCH}" >> "${GITHUB_STEP_SUMMARY}"
+                else
+                  printf '| [#%s](%s) | rebase requested | Pull request conflicts with %s; asked Dependabot to refresh it before validation runs. |\n' "${pr_number}" "${url}" "${DEFAULT_BRANCH}" >> "${GITHUB_STEP_SUMMARY}"
+                fi
+              else
+                printf '| [#%s](%s) | skipped | Pull request conflicts with %s, and the Dependabot rebase request failed: %s |\n' "${pr_number}" "${url}" "${DEFAULT_BRANCH}" "$(normalize_detail "${rebase_result}")" >> "${GITHUB_STEP_SUMMARY}"
+              fi
               continue
             fi
 
@@ -138,6 +186,21 @@ jobs:
             else
               validation_url="$(latest_validation_run "${head_sha}")"
               if [ -z "${validation_url}" ]; then
+                validation_checks="$(jq -r ".statusCheckRollup[]? | select(.workflowName == \"Build and Validate\") | .conclusion // .status // empty" <<<"${pr_json}")"
+                if [ -z "${validation_checks}" ]; then
+                  rebase_reason="No Build and Validate run was found for the current Dependabot head revision, so automated merge is asking Dependabot to refresh the branch and retrigger validation."
+                  if rebase_result="$(request_dependabot_rebase "${pr_number}" "${pr_json}" "${head_sha}" "${rebase_reason}")"; then
+                    if [ "${rebase_result}" = "already-requested" ]; then
+                      printf '| [#%s](%s) | waiting | No Build and Validate run was found for the current head revision; a Dependabot rebase was already requested. |\n' "${pr_number}" "${url}" >> "${GITHUB_STEP_SUMMARY}"
+                    else
+                      printf '| [#%s](%s) | rebase requested | No Build and Validate run was found for the current head revision; asked Dependabot to refresh it. |\n' "${pr_number}" "${url}" >> "${GITHUB_STEP_SUMMARY}"
+                    fi
+                  else
+                    printf '| [#%s](%s) | skipped | No successful Build and Validate run was found, and the Dependabot rebase request failed: %s |\n' "${pr_number}" "${url}" "$(normalize_detail "${rebase_result}")" >> "${GITHUB_STEP_SUMMARY}"
+                  fi
+                  continue
+                fi
+
                 printf '| [#%s](%s) | skipped | No successful Build and Validate run was found for the current PR head revision. |\n' "${pr_number}" "${url}" >> "${GITHUB_STEP_SUMMARY}"
                 continue
               fi
@@ -165,7 +228,7 @@ jobs:
             fi
 
             if printf '%s' "${merge_output}" | grep -Fq 'without workflows permission'; then
-              printf '| [#%s](%s) | skipped | Workflow-file updates need an optional `DEPENDABOT_AUTOMERGE_TOKEN` with workflow scope before they can merge automatically. |\n' "${pr_number}" "${url}" >> "${GITHUB_STEP_SUMMARY}"
+              printf '| [#%s](%s) | skipped | Workflow-file updates need an optional DEPENDABOT_AUTOMERGE_TOKEN with workflow scope before they can merge automatically. |\n' "${pr_number}" "${url}" >> "${GITHUB_STEP_SUMMARY}"
               continue
             fi
 

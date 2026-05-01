@@ -181,7 +181,7 @@ jobs:
       - name: Generate checksums
         run: |
           cd dist
-          sha256sum *.tar.gz *.deb > SHA256SUMS
+          sha256sum -- *.tar.gz *.deb > SHA256SUMS
 
       - name: Classify release tag
         id: release

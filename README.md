@@ -958,6 +958,14 @@ make build
 Use the website targets when changing the release hub so the local preview,
 metadata fallback, and production build stay aligned.
 
+Dependency updates are managed by Dependabot. Related AWS SDK for Go v2 module
+updates are grouped into one pull request so shared `go.mod` and `go.sum`
+changes do not create a queue of conflicting PRs. The Dependabot auto-merge
+workflow runs after `Build and Validate` succeeds and on a daily maintenance
+schedule; when a Dependabot PR is conflicted or missing validation for its
+current head revision, it comments `@dependabot rebase` once for that head and
+waits for the refreshed branch to pass validation before merging.
+
 `make build-release` produces release archives in `dist/release/` for:
 
 - `linux/amd64`
